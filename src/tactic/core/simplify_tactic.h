@@ -16,8 +16,8 @@ Author:
 Notes:
 
 --*/
-#ifndef _SIMPLIFY_TACTIC_H_
-#define _SIMPLIFY_TACTIC_H_
+#ifndef SIMPLIFY_TACTIC_H_
+#define SIMPLIFY_TACTIC_H_
 
 #include"tactic.h"
 #include"tactical.h"
@@ -45,8 +45,6 @@ public:
     unsigned get_num_steps() const;
 
     virtual tactic * translate(ast_manager & m) { return alloc(simplify_tactic, m, m_params); }
-protected:
-    virtual void set_cancel(bool f);
 
 };
 

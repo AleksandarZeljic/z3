@@ -28,8 +28,8 @@ struct arith_decl_plugin::algebraic_numbers_wrapper {
     id_gen                        m_id_gen;
     scoped_anum_vector            m_nums;
 
-    algebraic_numbers_wrapper():
-        m_amanager(m_qmanager),
+    algebraic_numbers_wrapper(reslimit& lim):
+        m_amanager(lim, m_qmanager),
         m_nums(m_amanager) {
     }
 
@@ -66,7 +66,7 @@ struct arith_decl_plugin::algebraic_numbers_wrapper {
 
 arith_decl_plugin::algebraic_numbers_wrapper & arith_decl_plugin::aw() const {
     if (m_aw == 0)
-        const_cast<arith_decl_plugin*>(this)->m_aw = alloc(algebraic_numbers_wrapper);
+        const_cast<arith_decl_plugin*>(this)->m_aw = alloc(algebraic_numbers_wrapper, m_manager->limit());
     return *m_aw;
 }
 
@@ -110,10 +110,6 @@ parameter arith_decl_plugin::translate(parameter const & p, decl_plugin & target
     return parameter(_target.aw().mk_id(aw().idx2anum(p.get_ext_id())), true);
 }
 
-void arith_decl_plugin::set_cancel(bool f) {
-    if (m_aw)
-        m_aw->m_amanager.set_cancel(f);
-}
 
 void arith_decl_plugin::set_manager(ast_manager * m, family_id id) {
     decl_plugin::set_manager(m, id);
@@ -667,4 +663,46 @@ bool arith_util::is_irrational_algebraic_numeral(expr const * n, algebraic_numbe
 algebraic_numbers::anum const & arith_util::to_irrational_algebraic_numeral(expr const * n) {
     SASSERT(is_irrational_algebraic_numeral(n));
     return plugin().aw().to_anum(to_app(n)->get_decl());
+}
+
+expr_ref arith_util::mk_mul_simplify(expr_ref_vector const& args) {
+    return mk_mul_simplify(args.size(), args.c_ptr());
+
+}
+expr_ref arith_util::mk_mul_simplify(unsigned sz, expr* const* args) {
+    expr_ref result(m_manager);
+    
+    switch (sz) {
+    case 0:
+        result = mk_numeral(rational(1), true);
+        break;
+    case 1:
+        result = args[0];
+        break;
+    default:
+        result = mk_mul(sz, args);
+        break;                    
+    }
+    return result;
+}
+
+expr_ref arith_util::mk_add_simplify(expr_ref_vector const& args) {
+    return mk_add_simplify(args.size(), args.c_ptr());
+
+}
+expr_ref arith_util::mk_add_simplify(unsigned sz, expr* const* args) {
+    expr_ref result(m_manager);
+    
+    switch (sz) {
+    case 0:
+        result = mk_numeral(rational(0), true);
+        break;
+    case 1:
+        result = args[0];
+        break;
+    default:
+        result = mk_add(sz, args);
+        break;                    
+    }
+    return result;
 }

@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _MPQ_H_
-#define _MPQ_H_
+#ifndef MPQ_H_
+#define MPQ_H_
 
 #include"mpz.h"
 #include"trace.h"
@@ -265,7 +265,7 @@ public:
 
     void display_smt2(std::ostream & out, mpq const & a, bool decimal) const;
 
-    void display_decimal(std::ostream & out, mpq const & a, unsigned prec);
+    void display_decimal(std::ostream & out, mpq const & a, unsigned prec, bool truncate = false);
 
     void add(mpz const & a, mpz const & b, mpz & c) { mpz_manager<SYNCH>::add(a, b, c); }
     
@@ -845,5 +845,5 @@ typedef _scoped_numeral<unsynch_mpq_manager> scoped_mpq;
 typedef _scoped_numeral<synch_mpq_manager> scoped_synch_mpq;
 typedef _scoped_numeral_vector<unsynch_mpq_manager> scoped_mpq_vector;
 
-#endif /* _MPQ_H_ */
+#endif /* MPQ_H_ */
 

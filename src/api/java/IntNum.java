@@ -36,7 +36,7 @@ public class IntNum extends IntExpr
     public int getInt()
     {
         Native.IntPtr res = new Native.IntPtr();
-        if (Native.getNumeralInt(getContext().nCtx(), getNativeObject(), res) ^ true)
+        if (!Native.getNumeralInt(getContext().nCtx(), getNativeObject(), res))
             throw new Z3Exception("Numeral is not an int");
         return res.value;
     }
@@ -47,7 +47,7 @@ public class IntNum extends IntExpr
     public long getInt64()
     {
         Native.LongPtr res = new Native.LongPtr();
-        if (Native.getNumeralInt64(getContext().nCtx(), getNativeObject(), res) ^ true)
+        if (!Native.getNumeralInt64(getContext().nCtx(), getNativeObject(), res))
             throw new Z3Exception("Numeral is not an int64");
         return res.value;
     }
@@ -63,14 +63,7 @@ public class IntNum extends IntExpr
     /**
      * Returns a string representation of the numeral.
      **/
-    public String toString()
-    {
-        try
-        {
-            return Native.getNumeralString(getContext().nCtx(), getNativeObject());
-        } catch (Z3Exception e)
-        {
-            return "Z3Exception: " + e.getMessage();
-        }
+    public String toString() {
+        return Native.getNumeralString(getContext().nCtx(), getNativeObject());
     }
 }

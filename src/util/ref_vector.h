@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _REF_VECTOR_H_
-#define _REF_VECTOR_H_
+#ifndef REF_VECTOR_H_
+#define REF_VECTOR_H_
 
 #include"vector.h"
 #include"obj_ref.h"
@@ -89,9 +89,10 @@ public:
         m_nodes.shrink(sz);
     }
 
-    void push_back(T * n) {
+    ref_vector_core& push_back(T * n) {
         inc_ref(n);
         m_nodes.push_back(n);
+        return *this;
     }
 
     void pop_back() {
@@ -351,4 +352,4 @@ struct ref_vector_ptr_eq {
 };
 
 
-#endif /* _REF_VECTOR_H_ */
+#endif /* REF_VECTOR_H_ */

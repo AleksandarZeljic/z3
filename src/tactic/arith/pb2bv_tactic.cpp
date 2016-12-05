@@ -29,10 +29,11 @@ Notes:
 #include"filter_model_converter.h"
 #include"pb2bv_model_converter.h"
 #include"pb2bv_tactic.h"
+#include"ast_pp.h"
 
 class pb2bv_tactic : public tactic {
 public:
-    struct non_pb {};
+    struct non_pb { expr* e; non_pb(expr* e) : e(e) {}};
 
     struct only_01_visitor {
         typedef rational numeral;
@@ -48,7 +49,7 @@ public:
     
         void throw_non_pb(expr * n) {
             TRACE("pb2bv", tout << "Not pseudo-Boolean: " << mk_ismt2_pp(n, m) << "\n";);
-            throw non_pb();
+            throw non_pb(n);
         }
     
         void operator()(var * n) { 
@@ -575,7 +576,7 @@ private:
     
         void throw_non_pb(expr * n) {        
             TRACE("pb2bv", tout << "Not pseudo-Boolean: " << mk_ismt2_pp(n, m) << "\n";);
-            throw non_pb();
+            throw non_pb(n);
         }
 
         // check if polynomial is encoding 
@@ -854,7 +855,7 @@ private:
             m_temporary_ints(m),
             m_used_dependencies(m),
             m_rw(*this) {
-            updt_params(p);
+            updt_params(p);            
             m_b_rw.set_flat(false); // no flattening otherwise will blowup the memory
             m_b_rw.set_elim_and(true);
         }
@@ -871,18 +872,19 @@ private:
             m_max_memory   = megabytes_to_bytes(p.get_uint("max_memory", UINT_MAX));
             m_all_clauses_limit = p.get_uint("pb2bv_all_clauses_limit", 8);
             m_cardinality_limit = p.get_uint("pb2bv_cardinality_limit", UINT_MAX);
+            m_b_rw.updt_params(p);
         }
 
         void collect_param_descrs(param_descrs & r) {
-            insert_max_memory(r);
+            insert_max_memory(r);            
             r.insert("pb2bv_all_clauses_limit", CPK_UINT, "(default: 8) maximum number of literals for using equivalent CNF encoding of PB constraint.");
             r.insert("pb2bv_cardinality_limit", CPK_UINT, "(default: inf) limit for using arc-consistent cardinality constraint encoding.");
+
+            m_b_rw.get_param_descrs(r);        
+            r.erase("flat"); 
+            r.erase("elim_and");            
         }
         
-        void set_cancel(bool f) {
-            m_rw.set_cancel(f);
-        }
-
         virtual void operator()(goal_ref const & g, 
                                 goal_ref_buffer & result, 
                                 model_converter_ref & mc, 
@@ -909,8 +911,8 @@ private:
             try {
                 quick_pb_check(g);
             }
-            catch (non_pb) {
-                throw tactic_exception("goal is in a fragment unsupported by pb2bv");
+            catch (non_pb& p) {
+                throw_tactic(p.e);
             }
                         
             unsigned size = g->size();
@@ -939,8 +941,8 @@ private:
                     new_exprs.push_back(new_f);
                 }                
             }
-            catch (non_pb) {
-                throw tactic_exception("goal is in a fragment unsupported by pb2bv");
+            catch (non_pb& p) {
+                throw_tactic(p.e);
             }
 
             for (unsigned idx = 0; idx < size; idx++)
@@ -964,6 +966,12 @@ private:
             result.push_back(g.get());
             TRACE("pb2bv", g->display(tout););
             SASSERT(g->is_well_sorted());
+        }
+
+        void throw_tactic(expr* e) {
+            std::stringstream strm;
+            strm << "goal is in a fragment unsupported by pb2bv. Offending expression: " << mk_pp(e, m);
+            throw tactic_exception(strm.str().c_str());
         }
     };
 
@@ -1003,18 +1011,11 @@ public:
     virtual void cleanup() {
         ast_manager & m = m_imp->m;
         imp * d = alloc(imp, m, m_params);
-        #pragma omp critical (tactic_cancel)
-        {
-            std::swap(d, m_imp);
-        }
+        std::swap(d, m_imp);        
         dealloc(d);
     }
 
-protected:
-    virtual void set_cancel(bool f) {
-        if (m_imp)
-            m_imp->set_cancel(f);
-    }
+
 };
 
 tactic * mk_pb2bv_tactic(ast_manager & m, params_ref const & p) {

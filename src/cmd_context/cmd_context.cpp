@@ -24,6 +24,7 @@ Notes:
 #include"array_decl_plugin.h"
 #include"datatype_decl_plugin.h"
 #include"seq_decl_plugin.h"
+#include"pb_decl_plugin.h"
 #include"fpa_decl_plugin.h"
 #include"ast_pp.h"
 #include"var_subst.h"
@@ -39,6 +40,12 @@ Notes:
 #include"for_each_expr.h"
 #include"scoped_timer.h"
 #include"interpolant_cmds.h"
+#include"model_smt2_pp.h"
+#include"model_v2_pp.h"
+#include"model_params.hpp"
+#include"th_rewriter.h"
+#include"tactic_exception.h"
+#include"smt_logics.h"
 
 func_decls::func_decls(ast_manager & m, func_decl * f):
     m_decls(TAG(func_decl*, f, 0)) {
@@ -127,11 +134,11 @@ bool func_decls::clash(func_decl * f) const {
         func_decl * g = *it;
         if (g == f)
             continue;
-        if (g->get_arity() != f->get_arity()) 
+        if (g->get_arity() != f->get_arity())
             continue;
         unsigned num = g->get_arity();
         unsigned i;
-        for (i = 0; i < num; i++) 
+        for (i = 0; i < num; i++)
             if (g->get_domain(i) != f->get_domain(i))
                 break;
         if (i == num)
@@ -241,6 +248,7 @@ protected:
     bv_util       m_bvutil;
     array_util    m_arutil;
     fpa_util      m_futil;
+    seq_util      m_sutil;
     datalog::dl_decl_util m_dlutil;
 
     format_ns::format * pp_fdecl_name(symbol const & s, func_decls const & fs, func_decl * f, unsigned & len) {
@@ -261,20 +269,21 @@ protected:
     }
 
 public:
-    pp_env(cmd_context & o):m_owner(o), m_autil(o.m()), m_bvutil(o.m()), m_arutil(o.m()), m_futil(o.m()), m_dlutil(o.m()) {}
+    pp_env(cmd_context & o):m_owner(o), m_autil(o.m()), m_bvutil(o.m()), m_arutil(o.m()), m_futil(o.m()), m_sutil(o.m()), m_dlutil(o.m()) {}
     virtual ~pp_env() {}
     virtual ast_manager & get_manager() const { return m_owner.m(); }
     virtual arith_util & get_autil() { return m_autil; }
     virtual bv_util & get_bvutil() { return m_bvutil; }
     virtual array_util & get_arutil() { return m_arutil; }
     virtual fpa_util & get_futil() { return m_futil; }
+    virtual seq_util & get_sutil() { return m_sutil; }
     virtual datalog::dl_decl_util& get_dlutil() { return m_dlutil; }
-    virtual bool uses(symbol const & s) const { 
-        return 
+    virtual bool uses(symbol const & s) const {
+        return
             m_owner.m_builtin_decls.contains(s) ||
             m_owner.m_func_decls.contains(s);
     }
-    virtual format_ns::format * pp_sort(sort * s) { 
+    virtual format_ns::format * pp_sort(sort * s) {
         return m_owner.pp(s);
     }
     virtual format_ns::format * pp_fdecl(func_decl * f, unsigned & len) {
@@ -305,18 +314,20 @@ cmd_context::cmd_context(bool main_ctx, ast_manager * m, symbol const & l):
     m_main_ctx(main_ctx),
     m_logic(l),
     m_interactive_mode(false),
-    m_global_decls(false),  
+    m_global_decls(false),
     m_print_success(m_params.m_smtlib2_compliant),
     m_random_seed(0),
     m_produce_unsat_cores(false),
+    m_produce_unsat_assumptions(false),
     m_produce_assignments(false),
     m_status(UNKNOWN),
     m_numeral_as_real(false),
     m_ignore_check(false),
     m_exit_on_error(false),
-    m_manager(m),   
+    m_manager(m),
     m_own_manager(m == 0),
     m_manager_initialized(false),
+    m_rec_fun_declared(false),
     m_pmanager(0),
     m_sexpr_manager(0),
     m_regular("stdout", std::cout),
@@ -327,7 +338,7 @@ cmd_context::cmd_context(bool main_ctx, ast_manager * m, symbol const & l):
     install_core_tactic_cmds(*this);
     install_interpolant_cmds(*this);
     SASSERT(m != 0 || !has_manager());
-    if (m_main_ctx) { 
+    if (m_main_ctx) {
         set_verbose_stream(diagnostic_stream());
     }
 }
@@ -336,25 +347,35 @@ cmd_context::~cmd_context() {
     if (m_main_ctx) {
         set_verbose_stream(std::cerr);
     }
-    reset(true); 
     finalize_cmds();
     finalize_tactic_cmds();
     finalize_probes();
+    reset(true);
     m_solver = 0;
     m_check_sat_result = 0;
 }
 
 void cmd_context::set_cancel(bool f) {
-    if (m_solver) {
+    if (has_manager()) {
         if (f) {
-            m_solver->cancel(); 
+            m().limit().cancel();
         }
         else {
-            m_solver->reset_cancel();
+            m().limit().reset_cancel();
         }
     }
-    if (has_manager())
-        m().set_cancel(f);
+}
+
+opt_wrapper* cmd_context::get_opt() {
+    return m_opt.get();
+}
+
+void cmd_context::set_opt(opt_wrapper* opt) {
+    m_opt = opt;
+    for (unsigned i = 0; i < m_scopes.size(); ++i) {
+        m_opt->push();
+    }
+    m_opt->set_logic(m_logic);
 }
 
 void cmd_context::global_params_updated() {
@@ -366,6 +387,9 @@ void cmd_context::global_params_updated() {
         if (!m_params.m_auto_config)
             p.set_bool("auto_config", false);
         m_solver->updt_params(p);
+    }
+    if (m_opt) {
+        get_opt()->updt_params(gparams::get_module("opt"));
     }
 }
 
@@ -396,20 +420,20 @@ void cmd_context::set_produce_interpolants(bool f) {
     // set_solver_factory(mk_smt_solver_factory());
 }
 
-bool cmd_context::produce_models() const { 
+bool cmd_context::produce_models() const {
     return m_params.m_model;
 }
 
-bool cmd_context::produce_proofs() const { 
+bool cmd_context::produce_proofs() const {
     return m_params.m_proof;
 }
 
-bool cmd_context::produce_interpolants() const { 
+bool cmd_context::produce_interpolants() const {
     // FIXME currently synonym for produce_proofs
     return m_params.m_proof;
 }
 
-bool cmd_context::produce_unsat_cores() const { 
+bool cmd_context::produce_unsat_cores() const {
     return m_params.m_unsat_core;
 }
 
@@ -480,110 +504,32 @@ void cmd_context::load_plugin(symbol const & name, bool install, svector<family_
     fids.erase(id);
 }
 
-bool cmd_context::logic_has_arith_core(symbol const & s) const {
-    return 
-        s == "QF_LRA" ||
-        s == "QF_LIA" ||
-        s == "QF_RDL" ||
-        s == "QF_IDL" ||
-        s == "QF_AUFLIA" ||
-        s == "QF_AUFLIRA" ||
-        s == "QF_AUFNIA" ||
-        s == "QF_AUFNIRA" ||
-        s == "QF_UFLIA" ||
-        s == "QF_UFLRA" ||
-        s == "QF_UFIDL" ||
-        s == "QF_UFRDL" ||
-        s == "QF_NIA" ||
-        s == "QF_NRA" ||
-        s == "QF_NIRA" ||
-        s == "QF_UFNRA" ||
-        s == "QF_UFNIA" ||
-        s == "QF_UFNIRA" ||
-        s == "QF_BVRE" ||
-        s == "AUFLIA" ||
-        s == "AUFLIRA" ||
-        s == "AUFNIA" ||
-        s == "AUFNIRA" ||
-        s == "UFLIA" ||
-        s == "UFLRA" ||
-        s == "UFNRA" ||
-        s == "UFNIRA" ||
-        s == "UFNIA" ||
-        s == "LIA" ||        
-        s == "LRA" || 
-        s == "QF_FP" ||
-        s == "QF_FPBV" ||
-        s == "HORN";
-}
 
 bool cmd_context::logic_has_arith() const {
-    return !has_logic() || logic_has_arith_core(m_logic);
+    return !has_logic() || smt_logics::logic_has_arith(m_logic);
 }
 
-bool cmd_context::logic_has_bv_core(symbol const & s) const {
-    return
-        s == "UFBV" ||
-        s == "AUFBV" ||
-        s == "ABV" ||
-        s == "BV" ||
-        s == "QF_BV" ||
-        s == "QF_UFBV" ||
-        s == "QF_ABV" ||
-        s == "QF_AUFBV" ||
-        s == "QF_BVRE" ||
-        s == "QF_FPBV" ||
-        s == "HORN";
-}
 
-bool cmd_context::logic_has_horn(symbol const& s) const {
-    return
-        s == "HORN";
-
-}
 
 bool cmd_context::logic_has_bv() const {
-    return !has_logic() || logic_has_bv_core(m_logic);
-}
-
-bool cmd_context::logic_has_seq_core(symbol const& s) const {
-    return 
-        s == "QF_BVRE";
-        
+    return !has_logic() || smt_logics::logic_has_bv(m_logic);
 }
 
 bool cmd_context::logic_has_seq() const {
-    return !has_logic() || logic_has_seq_core(m_logic);        
+    return !has_logic() || smt_logics::logic_has_seq(m_logic);
 }
 
 bool cmd_context::logic_has_fpa() const {
-    return !has_logic() || m_logic == "QF_FP" || m_logic == "QF_FPBV";
+    return !has_logic() || smt_logics::logic_has_fpa(m_logic);
 }
 
-bool cmd_context::logic_has_array_core(symbol const & s) const {
-    return 
-        s == "QF_AX" ||
-        s == "QF_AUFLIA" ||
-        s == "QF_AUFLIRA" ||
-        s == "QF_AUFNIA" ||
-        s == "QF_AUFNIRA" ||
-        s == "AUFLIA" ||
-        s == "AUFLIRA" ||
-        s == "AUFNIA" ||
-        s == "AUFNIRA" ||
-        s == "AUFBV" || 
-        s == "ABV" || 
-        s == "QF_ABV" ||
-        s == "QF_AUFBV" ||
-        s == "HORN";
-}
 
 bool cmd_context::logic_has_array() const {
-    return !has_logic() || logic_has_array_core(m_logic);
+    return !has_logic() || smt_logics::logic_has_array(m_logic);
 }
 
 bool cmd_context::logic_has_datatype() const {
-    return !has_logic();
+    return !has_logic() || smt_logics::logic_has_datatype(m_logic);
 }
 
 void cmd_context::init_manager_core(bool new_manager) {
@@ -601,7 +547,9 @@ void cmd_context::init_manager_core(bool new_manager) {
         register_plugin(symbol("array"),    alloc(array_decl_plugin), logic_has_array());
         register_plugin(symbol("datatype"), alloc(datatype_decl_plugin), logic_has_datatype());
         register_plugin(symbol("seq"),      alloc(seq_decl_plugin), logic_has_seq());
+        register_plugin(symbol("pb"),     alloc(pb_decl_plugin), !has_logic());
         register_plugin(symbol("fpa"),      alloc(fpa_decl_plugin), logic_has_fpa());
+        register_plugin(symbol("datalog_relation"), alloc(datalog::dl_decl_plugin), !has_logic());
     }
     else {
         // the manager was created by an external module
@@ -615,7 +563,7 @@ void cmd_context::init_manager_core(bool new_manager) {
         load_plugin(symbol("datatype"), logic_has_datatype(), fids);
         load_plugin(symbol("seq"),      logic_has_seq(), fids);
         load_plugin(symbol("fpa"),      logic_has_fpa(), fids);
-        
+
         svector<family_id>::iterator it  = fids.begin();
         svector<family_id>::iterator end = fids.end();
         for (; it != end; ++it) {
@@ -663,45 +611,26 @@ void cmd_context::init_external_manager() {
     init_manager_core(false);
 }
 
-bool cmd_context::supported_logic(symbol const & s) const {
-    return s == "QF_UF" || s == "UF" || 
-        logic_has_arith_core(s) || logic_has_bv_core(s) || 
-        logic_has_array_core(s) || logic_has_seq_core(s) ||
-        logic_has_horn(s) ||
-        s == "QF_FP" || s == "QF_FPBV";
-}
 
 bool cmd_context::set_logic(symbol const & s) {
     if (has_logic())
         throw cmd_exception("the logic has already been set");
-    if (has_manager() && m_main_ctx) 
-        throw cmd_exception("logic must be set before initialization");    
-    if (!supported_logic(s)) {
-        if (m_params.m_smtlib2_compliant) {
-            return false; 
-        }
-        else {
-            warning_msg("unknown logic, ignoring set-logic command");
-            return true;
-        }
+    if (has_manager() && m_main_ctx)
+        throw cmd_exception("logic must be set before initialization");
+    if (!smt_logics::supported_logic(s)) {
+        return false;
     }
     m_logic = s;
-    if (is_logic("QF_RDL") ||
-        is_logic("QF_LRA") ||
-        is_logic("UFLRA") ||
-        is_logic("LRA") ||
-        is_logic("RDL") ||
-        is_logic("QF_NRA") ||
-        is_logic("QF_UFNRA") ||
-        is_logic("QF_UFLRA"))
+    if (smt_logics::logic_has_reals_only(s)) {
         m_numeral_as_real = true;
+    }
     return true;
 }
 
-std::string cmd_context::reason_unknown() const { 
+std::string cmd_context::reason_unknown() const {
     if (m_check_sat_result.get() == 0)
-        throw cmd_exception("state of the most recent check-sat command is not unknown");
-    return m_check_sat_result->reason_unknown(); 
+        throw cmd_exception("state of the most recent check-sat command is not known");
+    return m_check_sat_result->reason_unknown();
 }
 
 bool cmd_context::is_func_decl(symbol const & s) const {
@@ -736,7 +665,7 @@ void cmd_context::insert(symbol const & s, func_decl * f) {
     if (!m_global_decls) {
         m_func_decls_stack.push_back(sf_pair(s, f));
     }
-    TRACE("cmd_context", tout << "new sort decl\n" << mk_pp(f, m()) << "\n";);
+    TRACE("cmd_context", tout << "new function decl\n" << mk_pp(f, m()) << "\n";);
 }
 
 void cmd_context::insert(symbol const & s, psort_decl * p) {
@@ -799,6 +728,27 @@ void cmd_context::insert(symbol const & s, object_ref * r) {
     m_object_refs.insert(s, r);
 }
 
+void cmd_context::insert_rec_fun(func_decl* f, expr_ref_vector const& binding, svector<symbol> const& ids, expr* e) {
+    expr_ref eq(m());
+    app_ref lhs(m());
+    lhs = m().mk_app(f, binding.size(), binding.c_ptr());
+    eq  = m().mk_eq(lhs, e);
+    if (!ids.empty()) {
+        expr* pat = m().mk_pattern(lhs);
+        eq  = m().mk_forall(ids.size(), f->get_domain(), ids.c_ptr(), eq, 0, m().rec_fun_qid(), symbol::null, 1, &pat);
+    }
+
+    //
+    // disable warning given the current way they are used 
+    // (Z3 will here silently assume and not check the definitions to be well founded, 
+    // and please use HSF for everything else).
+    //
+    if (false && !ids.empty() && !m_rec_fun_declared) {        
+        warning_msg("recursive function definitions are assumed well-founded");
+        m_rec_fun_declared = true;
+    }
+    assert_expr(eq);
+}
 
 func_decl * cmd_context::find_func_decl(symbol const & s) const {
     builtin_decl d;
@@ -844,7 +794,7 @@ static builtin_decl const & peek_builtin_decl(builtin_decl const & first, family
     return first;
 }
 
-func_decl * cmd_context::find_func_decl(symbol const & s, unsigned num_indices, unsigned const * indices, 
+func_decl * cmd_context::find_func_decl(symbol const & s, unsigned num_indices, unsigned const * indices,
                                         unsigned arity, sort * const * domain, sort * range) const {
     builtin_decl d;
     if (m_builtin_decls.find(s, d)) {
@@ -870,7 +820,7 @@ func_decl * cmd_context::find_func_decl(symbol const & s, unsigned num_indices, 
             throw cmd_exception("invalid function declaration reference, invalid builtin reference ", s);
         return f;
     }
-    
+
     if (m_macros.contains(s))
         throw cmd_exception("invalid function declaration reference, named expressions (aka macros) cannot be referenced ", s);
 
@@ -886,7 +836,7 @@ func_decl * cmd_context::find_func_decl(symbol const & s, unsigned num_indices, 
         throw cmd_exception("invalid function declaration reference, unknown function ", s);
     return f;
 }
- 
+
 psort_decl * cmd_context::find_psort_decl(symbol const & s) const {
     psort_decl * p = 0;
     m_psort_decls.find(s, p);
@@ -1169,7 +1119,6 @@ void cmd_context::insert_aux_pdecl(pdecl * p) {
 }
 
 void cmd_context::reset(bool finalize) {
-    m_check_sat_result = 0;
     m_logic = symbol::null;
     m_check_sat_result = 0;
     m_numeral_as_real = false;
@@ -1186,6 +1135,7 @@ void cmd_context::reset(bool finalize) {
     if (m_solver)
         m_solver = 0;
     m_scopes.reset();
+    m_opt = 0;
     m_pp_env = 0;
     m_dt_eh  = 0;
     if (m_manager) {
@@ -1201,7 +1151,7 @@ void cmd_context::reset(bool finalize) {
             // reinit cmd_context if this is not a finalization step
             if (!finalize)
                 init_external_manager();
-            else 
+            else
                 m_manager_initialized = false;
         }
     }
@@ -1251,12 +1201,14 @@ void cmd_context::push() {
     s.m_macros_stack_lim       = m_macros_stack.size();
     s.m_aux_pdecls_lim         = m_aux_pdecls.size();
     s.m_assertions_lim         = m_assertions.size();
-    if (m_solver) 
+    if (m_solver)
         m_solver->push();
+    if (m_opt)
+        m_opt->push();
 }
 
 void cmd_context::push(unsigned n) {
-    for (unsigned i = 0; i < n; i++) 
+    for (unsigned i = 0; i < n; i++)
         push();
 }
 
@@ -1268,7 +1220,7 @@ void cmd_context::restore_func_decls(unsigned old_sz) {
         sf_pair const & p = *it;
         erase_func_decl_core(p.first, p.second);
     }
-    m_func_decls_stack.shrink(old_sz);
+    m_func_decls_stack.resize(old_sz);
 }
 
 void cmd_context::restore_psort_decls(unsigned old_sz) {
@@ -1335,7 +1287,7 @@ void cmd_context::restore_assertions(unsigned old_sz) {
     if (produce_unsat_cores())
         restore(m(), m_assertion_names, old_sz);
     if (m_interactive_mode)
-        m_assertion_strings.shrink(old_sz);
+        m_assertion_strings.resize(old_sz);
 }
 
 void cmd_context::pop(unsigned n) {
@@ -1348,6 +1300,8 @@ void cmd_context::pop(unsigned n) {
     if (m_solver) {
         m_solver->pop(n);
     }
+    if (m_opt)
+        m_opt->pop(n);
     unsigned new_lvl = lvl - n;
     scope & s        = m_scopes[new_lvl];
     restore_func_decls(s.m_func_decls_stack_lim);
@@ -1364,15 +1318,55 @@ void cmd_context::check_sat(unsigned num_assumptions, expr * const * assumptions
     IF_VERBOSE(100, verbose_stream() << "(started \"check-sat\")" << std::endl;);
     TRACE("before_check_sat", dump_assertions(tout););
     init_manager();
-    if (m_solver) {
-        m_check_sat_result = m_solver.get(); // solver itself stores the result.
-        m_solver->set_progress_callback(this);
-        unsigned timeout     = m_params.m_timeout;
-        scoped_watch sw(*this);
-        cancel_eh<solver> eh(*m_solver);
+    unsigned timeout = m_params.m_timeout;
+    unsigned rlimit  = m_params.m_rlimit;
+    scoped_watch sw(*this);
+    lbool r;
+    bool was_pareto = false, was_opt = false;
+
+    if (m_opt && !m_opt->empty()) {
+        was_opt = true;
+        m_check_sat_result = get_opt();
+        cancel_eh<reslimit> eh(m().limit());
         scoped_ctrl_c ctrlc(eh);
         scoped_timer timer(timeout, &eh);
-        lbool r;
+        scoped_rlimit _rlimit(m().limit(), rlimit);
+        ptr_vector<expr> cnstr(m_assertions);
+        cnstr.append(num_assumptions, assumptions);
+        get_opt()->set_hard_constraints(cnstr);
+        try {
+            r = get_opt()->optimize();
+            while (r == l_true && get_opt()->is_pareto()) {
+                was_pareto = true;
+                get_opt()->display_assignment(regular_stream());
+                regular_stream() << "\n";
+                if (get_opt()->print_model()) {
+                    model_ref mdl;
+                    get_opt()->get_model(mdl);
+                    display_model(mdl);
+                }
+                r = get_opt()->optimize();
+            }
+        }
+        catch (z3_error & ex) {
+            throw ex;
+        }
+        catch (z3_exception & ex) {
+            get_opt()->display_assignment(regular_stream());
+            throw cmd_exception(ex.msg());
+        }
+        if (was_pareto && r == l_false) {
+            r = l_true;
+        }
+        get_opt()->set_status(r);
+    }
+    else if (m_solver) {
+        m_check_sat_result = m_solver.get(); // solver itself stores the result.
+        m_solver->set_progress_callback(this);
+        cancel_eh<reslimit> eh(m().limit());
+        scoped_ctrl_c ctrlc(eh);
+        scoped_timer timer(timeout, &eh);
+        scoped_rlimit _rlimit(m().limit(), rlimit);
         try {
             r = m_solver->check_sat(num_assumptions, assumptions);
         }
@@ -1380,17 +1374,92 @@ void cmd_context::check_sat(unsigned num_assumptions, expr * const * assumptions
             throw ex;
         }
         catch (z3_exception & ex) {
-            throw cmd_exception(ex.msg());
+            m_solver->set_reason_unknown(ex.msg());
+            r = l_undef;
         }
         m_solver->set_status(r);
-        display_sat_result(r);
-        validate_check_sat_result(r);
-        if (r == l_true)
-            validate_model();
     }
     else {
         // There is no solver installed in the command context.
         regular_stream() << "unknown" << std::endl;
+        return;
+    }
+    display_sat_result(r);
+    if (r == l_true) {
+        validate_model();
+    }
+    validate_check_sat_result(r);
+    if (was_opt && r != l_false && !was_pareto) {
+        get_opt()->display_assignment(regular_stream());
+    }
+
+    if (r == l_true && m_params.m_dump_models) {
+        model_ref md;
+        get_check_sat_result()->get_model(md);
+        display_model(md);
+    }
+}
+
+void cmd_context::get_consequences(expr_ref_vector const& assumptions, expr_ref_vector const& vars, expr_ref_vector & conseq) {
+    unsigned timeout = m_params.m_timeout;
+    unsigned rlimit  = m_params.m_rlimit;
+    lbool r;
+    m_check_sat_result = m_solver.get(); // solver itself stores the result.
+    m_solver->set_progress_callback(this);
+    cancel_eh<reslimit> eh(m().limit());
+    scoped_ctrl_c ctrlc(eh);
+    scoped_timer timer(timeout, &eh);
+    scoped_rlimit _rlimit(m().limit(), rlimit);
+    try {
+        r = m_solver->get_consequences(assumptions, vars, conseq);
+    }
+    catch (z3_error & ex) {
+        throw ex;
+    }
+    catch (z3_exception & ex) {
+        m_solver->set_reason_unknown(ex.msg());
+        r = l_undef;
+    }
+    m_solver->set_status(r);
+    display_sat_result(r);
+}
+
+
+void cmd_context::reset_assertions() {
+    if (!m_global_decls) {
+        reset(false);
+        return;
+    }
+
+    if (m_opt) {
+        m_opt = 0;
+    }
+    if (m_solver) {
+        m_solver = 0;
+        mk_solver();
+    }
+    restore_assertions(0);
+    svector<scope>::iterator it  = m_scopes.begin();
+    svector<scope>::iterator end = m_scopes.end();
+    for (; it != end; ++it) {
+        it->m_assertions_lim = 0;
+        if (m_solver) m_solver->push();
+    }
+}
+    
+
+void cmd_context::display_model(model_ref& mdl) {
+    if (mdl) {
+        model_params p;
+        if (p.v1() || p.v2()) {
+            std::ostringstream buffer;
+            model_v2_pp(buffer, *mdl, p.partial());
+            regular_stream() << "\"" << escaped(buffer.str().c_str(), true) << "\"" << std::endl;
+        } else {
+            regular_stream() << "(model " << std::endl;
+            model_smt2_pp(regular_stream(), *this, *mdl, 2);
+            regular_stream() << ")" << std::endl;
+        }
     }
 }
 
@@ -1435,8 +1504,8 @@ void cmd_context::validate_check_sat_result(lbool r) {
     }
 }
 
-void cmd_context::set_diagnostic_stream(char const * name) { 
-    m_diagnostic.set(name); 
+void cmd_context::set_diagnostic_stream(char const * name) {
+    m_diagnostic.set(name);
     if (m_main_ctx) {
         set_warning_stream(&(*m_diagnostic));
         set_verbose_stream(diagnostic_stream());
@@ -1448,15 +1517,15 @@ struct contains_array_op_proc {
     family_id m_array_fid;
     contains_array_op_proc(ast_manager & m):m_array_fid(m.mk_family_id("array")) {}
     void operator()(var * n)        {}
-    void operator()(app * n)        { 
+    void operator()(app * n)        {
         if (n->get_family_id() != m_array_fid)
             return;
         decl_kind k = n->get_decl_kind();
-        if (k == OP_AS_ARRAY || 
-            k == OP_STORE || 
-            k == OP_ARRAY_MAP || 
+        if (k == OP_AS_ARRAY ||
+            k == OP_STORE ||
+            k == OP_ARRAY_MAP ||
             k == OP_CONST_ARRAY)
-            throw found(); 
+            throw found();
     }
     void operator()(quantifier * n) {}
 };
@@ -1465,7 +1534,7 @@ struct contains_array_op_proc {
    \brief Check if the current model satisfies the quantifier free formulas.
 */
 void cmd_context::validate_model() {
-    if (!validate_model_enabled()) 
+    if (!validate_model_enabled())
         return;
     if (!is_model_available())
         return;
@@ -1474,16 +1543,18 @@ void cmd_context::validate_model() {
     SASSERT(md.get() != 0);
     params_ref p;
     p.set_uint("max_degree", UINT_MAX); // evaluate algebraic numbers of any degree.
-    p.set_uint("sort_store", true); 
-    p.set_bool("completion", true); 
+    p.set_uint("sort_store", true);
+    p.set_bool("completion", true);
     model_evaluator evaluator(*(md.get()), p);
     contains_array_op_proc contains_array(m());
     {
-        cancel_eh<model_evaluator> eh(evaluator);
+        scoped_rlimit _rlimit(m().limit(), 0);
+        cancel_eh<reslimit> eh(m().limit());
         expr_ref r(m());
         scoped_ctrl_c ctrlc(eh);
         ptr_vector<expr>::const_iterator it  = begin_assertions();
         ptr_vector<expr>::const_iterator end = end_assertions();
+        bool invalid_model = false;
         for (; it != end; ++it) {
             expr * a = *it;
             if (is_ground(a)) {
@@ -1492,18 +1563,26 @@ void cmd_context::validate_model() {
                 TRACE("model_validate", tout << "checking\n" << mk_ismt2_pp(a, m()) << "\nresult:\n" << mk_ismt2_pp(r, m()) << "\n";);
                 if (m().is_true(r))
                     continue;
+
                 // The evaluator for array expressions is not complete
                 // If r contains as_array/store/map/const expressions, then we do not generate the error.
                 // TODO: improve evaluator for model expressions.
                 // Note that, if "a" evaluates to false, then the error will be generated.
+                if (has_quantifiers(r)) {
+                    continue;
+                }
                 try {
                     for_each_expr(contains_array, r);
                 }
                 catch (contains_array_op_proc::found) {
                     continue;
                 }
-                throw cmd_exception("an invalid model was generated");
+                TRACE("model_validate", model_smt2_pp(tout, *this, *(md.get()), 0););
+                invalid_model = true;
             }
+        }
+        if (invalid_model) {
+            throw cmd_exception("an invalid model was generated");
         }
     }
 }
@@ -1516,15 +1595,12 @@ void cmd_context::mk_solver() {
     bool proofs_enabled, models_enabled, unsat_core_enabled;
     params_ref p;
     m_params.get_solver_params(m(), p, proofs_enabled, models_enabled, unsat_core_enabled);
-    if(produce_interpolants()){
-        SASSERT(m_interpolating_solver_factory);
+    if (produce_interpolants() && m_interpolating_solver_factory) {
         m_solver = (*m_interpolating_solver_factory)(m(), p, true /* must have proofs */, models_enabled, unsat_core_enabled, m_logic);
     }
     else
         m_solver = (*m_solver_factory)(m(), p, proofs_enabled, models_enabled, unsat_core_enabled, m_logic);
 }
-
-
 
 void cmd_context::set_interpolating_solver_factory(solver_factory * f) {
   SASSERT(!has_manager());
@@ -1557,25 +1633,29 @@ void cmd_context::set_solver_factory(solver_factory * f) {
 
 void cmd_context::display_statistics(bool show_total_time, double total_time) {
     statistics st;
-    unsigned long long mem = memory::get_max_used_memory();
     if (show_total_time)
         st.update("total time", total_time);
     st.update("time", get_seconds());
-    st.update("memory", static_cast<double>(mem)/static_cast<double>(1024*1024));
+    get_memory_statistics(st);
+    get_rlimit_statistics(m().limit(), st);
     if (m_check_sat_result) {
         m_check_sat_result->collect_statistics(st);
     }
     else if (m_solver) {
         m_solver->collect_statistics(st);
     }
+    else if (m_opt) {
+        m_opt->collect_statistics(st);
+    }
     st.display_smt2(regular_stream());
 }
+
 
 void cmd_context::display_assertions() {
     if (!m_interactive_mode)
         throw cmd_exception("command is only available in interactive mode, use command (set-option :interactive-mode true)");
-    vector<std::string>::const_iterator it  = m_assertion_strings.begin();
-    vector<std::string>::const_iterator end = m_assertion_strings.end();
+    std::vector<std::string>::const_iterator it  = m_assertion_strings.begin();
+    std::vector<std::string>::const_iterator end = m_assertion_strings.end();
     regular_stream() << "(";
     for (bool first = true; it != end; ++it) {
         std::string const & s = *it;
@@ -1627,7 +1707,7 @@ void cmd_context::pp(func_decl * f, format_ns::format_ref & r) const {
 void cmd_context::display(std::ostream & out, sort * s, unsigned indent) const {
     format_ns::format_ref f(format_ns::fm(m()));
     f = pp(s);
-    if (indent > 0) 
+    if (indent > 0)
         f = format_ns::mk_indent(m(), indent, f);
     ::pp(out, f.get(), m());
 }
@@ -1635,7 +1715,7 @@ void cmd_context::display(std::ostream & out, sort * s, unsigned indent) const {
 void cmd_context::display(std::ostream & out, expr * n, unsigned indent, unsigned num_vars, char const * var_prefix, sbuffer<symbol> & var_names) const {
     format_ns::format_ref f(format_ns::fm(m()));
     pp(n, num_vars, var_prefix, f, var_names);
-    if (indent > 0) 
+    if (indent > 0)
         f = format_ns::mk_indent(m(), indent, f);
     ::pp(out, f.get(), m());
 }
@@ -1648,7 +1728,7 @@ void cmd_context::display(std::ostream & out, expr * n, unsigned indent) const {
 void cmd_context::display(std::ostream & out, func_decl * d, unsigned indent) const {
     format_ns::format_ref f(format_ns::fm(m()));
     pp(d, f);
-    if (indent > 0) 
+    if (indent > 0)
         f = format_ns::mk_indent(m(), indent, f);
     ::pp(out, f.get(), m());
 }
@@ -1672,7 +1752,7 @@ void cmd_context::display_smt2_benchmark(std::ostream & out, unsigned num, expr 
     }
 
     // TODO: display uninterpreted sort decls, and datatype decls.
-    
+
     unsigned num_decls = decls.get_num_decls();
     func_decl * const * fs = decls.get_func_decls();
     for (unsigned i = 0; i < num_decls; i++) {
@@ -1688,7 +1768,7 @@ void cmd_context::display_smt2_benchmark(std::ostream & out, unsigned num, expr 
     out << "(check-sat)" << std::endl;
 }
 
-void cmd_context::slow_progress_sample() { 
+void cmd_context::slow_progress_sample() {
     SASSERT(m_solver);
     statistics st;
     regular_stream() << "(progress\n";

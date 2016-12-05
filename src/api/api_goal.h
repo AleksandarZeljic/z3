@@ -15,14 +15,15 @@ Author:
 Revision History:
 
 --*/
-#ifndef _API_GOAL_H_
-#define _API_GOAL_H_
+#ifndef API_GOAL_H_
+#define API_GOAL_H_
 
 #include"api_util.h"
 #include"goal.h"
 
 struct Z3_goal_ref : public api::object {
     goal_ref m_goal;
+    Z3_goal_ref(api::context& c) : api::object(c) {}
     virtual ~Z3_goal_ref() {}
 };
 

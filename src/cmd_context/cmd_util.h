@@ -6,7 +6,7 @@ Module Name:
     cmd_util.h
 
 Abstract:
-    Macros for definining new SMT2 front-end cmds.
+    Macros for defining new SMT2 front-end cmds.
 
 Author:
 
@@ -15,8 +15,8 @@ Author:
 Notes:
 
 --*/
-#ifndef _CMD_UTIL_H_
-#define _CMD_UTIL_H_
+#ifndef CMD_UTIL_H_
+#define CMD_UTIL_H_
 
 #define ATOMIC_CMD(CLS_NAME, NAME, DESCR, ACTION)                               \
 class CLS_NAME : public cmd {                                                   \

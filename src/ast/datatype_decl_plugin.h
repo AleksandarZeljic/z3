@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _DATATYPE_DECL_PLUGIN_H_
-#define _DATATYPE_DECL_PLUGIN_H_
+#ifndef DATATYPE_DECL_PLUGIN_H_
+#define DATATYPE_DECL_PLUGIN_H_
 
 #include"ast.h"
 #include"tptr.h"
@@ -32,6 +32,7 @@ enum datatype_op_kind {
     OP_DT_CONSTRUCTOR,
     OP_DT_RECOGNISER,
     OP_DT_ACCESSOR,
+    OP_DT_UPDATE_FIELD,
     LAST_DT_OP
 };
 
@@ -108,7 +109,7 @@ public:
          parameters[o]            - (int) m - number of constructors
          parameters[o+1]          - (int) k_1 - offset for constructor definition
          ...
-         parameters[o+m]          - (int) k_m - offset ofr constructor definition
+         parameters[o+m]          - (int) k_m - offset for constructor definition
       
          for each offset k_i at parameters[o+s] for some s in 0..m-1
          parameters[k_i]          - (symbol) name of the constructor
@@ -149,8 +150,14 @@ public:
 
     virtual bool is_unique_value(app * e) const { return is_value(e); }
 
+    virtual void get_op_names(svector<builtin_name> & op_names, symbol const & logic);
+
 private:
     bool is_value_visit(expr * arg, ptr_buffer<app> & todo) const;
+
+    func_decl * mk_update_field(
+        unsigned num_parameters, parameter const * parameters, 
+        unsigned arity, sort * const * domain, sort * range);
 };
 
 class datatype_util {
@@ -166,9 +173,11 @@ class datatype_util {
     obj_map<func_decl, func_decl *>             m_recognizer2constructor;
     obj_map<func_decl, func_decl *>             m_accessor2constructor;
     obj_map<sort, bool>                         m_is_recursive;
+    obj_map<sort, bool>                         m_is_enum;
     ast_ref_vector                              m_asts;
     ptr_vector<ptr_vector<func_decl> >          m_vectors;
-    
+    unsigned                                    m_start;
+
     func_decl * get_non_rec_constructor_core(sort * ty, ptr_vector<sort> & forbidden_set);
     func_decl * get_constructor(sort * ty, unsigned c_id);
 
@@ -177,13 +186,17 @@ public:
     ~datatype_util();
     ast_manager & get_manager() const { return m_manager; }
     bool is_datatype(sort * s) const { return is_sort_of(s, m_family_id, DATATYPE_SORT); }
+    bool is_enum_sort(sort* s);
+
     bool is_recursive(sort * ty);
     bool is_constructor(func_decl * f) const { return is_decl_of(f, m_family_id, OP_DT_CONSTRUCTOR); }
     bool is_recognizer(func_decl * f) const { return is_decl_of(f, m_family_id, OP_DT_RECOGNISER); }
     bool is_accessor(func_decl * f) const { return is_decl_of(f, m_family_id, OP_DT_ACCESSOR); }
+    bool is_update_field(func_decl * f) const { return is_decl_of(f, m_family_id, OP_DT_UPDATE_FIELD); }
     bool is_constructor(app * f) const { return is_app_of(f, m_family_id, OP_DT_CONSTRUCTOR); }
     bool is_recognizer(app * f) const { return is_app_of(f, m_family_id, OP_DT_RECOGNISER); }
     bool is_accessor(app * f) const { return is_app_of(f, m_family_id, OP_DT_ACCESSOR); }
+    bool is_update_field(app * f) const { return is_app_of(f, m_family_id, OP_DT_UPDATE_FIELD); }
     ptr_vector<func_decl> const * get_datatype_constructors(sort * ty);
     unsigned get_datatype_num_constructors(sort * ty) { 
         SASSERT(is_datatype(ty));
@@ -200,10 +213,12 @@ public:
     func_decl * get_recognizer_constructor(func_decl * recognizer);
     family_id get_family_id() const { return m_family_id; }
     bool are_siblings(sort * s1, sort * s2);
+    bool is_func_decl(datatype_op_kind k, unsigned num_params, parameter const* params, func_decl* f);
+    bool is_constructor_of(unsigned num_params, parameter const* params, func_decl* f);
     void reset();
     void display_datatype(sort *s, std::ostream& strm);
 
 };
 
-#endif /* _DATATYPE_DECL_PLUGIN_H_ */
+#endif /* DATATYPE_DECL_PLUGIN_H_ */
 

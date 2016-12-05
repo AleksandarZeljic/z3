@@ -22,6 +22,10 @@ Notes:
 
 void expr_abstractor::operator()(unsigned base, unsigned num_bound, expr* const* bound, expr* n, expr_ref& result) {
     
+    if (num_bound == 0) {
+        result = n;
+        return;
+    }
     expr * curr = 0, *b = 0;
     SASSERT(n->get_ref_count() > 0);
 
@@ -49,6 +53,7 @@ void expr_abstractor::operator()(unsigned base, unsigned num_bound, expr* const*
         case AST_APP: {
             app* a = to_app(curr);
             bool all_visited = true;
+            bool changed = false;
             m_args.reset();
             for (unsigned i = 0; i < a->get_num_args(); ++i) {
                 if (!m_map.find(a->get_arg(i), b)) {
@@ -56,12 +61,17 @@ void expr_abstractor::operator()(unsigned base, unsigned num_bound, expr* const*
                     all_visited = false;
                 }
                 else {
+                    changed |= b != a->get_arg(i);
                     m_args.push_back(b);
                 }
             }
             if (all_visited) {
-                b = m.mk_app(a->get_decl(), m_args.size(), m_args.c_ptr());
-                m_pinned.push_back(b);
+                if (changed) {
+                    b = m.mk_app(a->get_decl(), m_args.size(), m_args.c_ptr());
+                    m_pinned.push_back(b);
+                } else {
+                    b = curr;
+                }
                 m_map.insert(curr, b);
                 m_stack.pop_back();
             }
@@ -99,4 +109,28 @@ void expr_abstractor::operator()(unsigned base, unsigned num_bound, expr* const*
 void expr_abstract(ast_manager& m, unsigned base, unsigned num_bound, expr* const* bound, expr* n, expr_ref&  result) {
     expr_abstractor abs(m);
     abs(base, num_bound, bound, n, result);
+}
+
+expr_ref mk_quantifier(bool is_forall, ast_manager& m, unsigned num_bound, app* const* bound, expr* n) {
+    expr_ref result(m);
+    expr_abstract(m, 0, num_bound, (expr* const*)bound, n, result);    
+    if (num_bound > 0) {
+        ptr_vector<sort> sorts;
+        svector<symbol> names;
+        for (unsigned i = 0; i < num_bound; ++i) {
+            sorts.push_back(m.get_sort(bound[i]));
+            names.push_back(bound[i]->get_decl()->get_name());
+        }
+        result = m.mk_quantifier(is_forall, num_bound, sorts.c_ptr(), names.c_ptr(), result);
+    }
+    return result;
+
+}
+
+expr_ref mk_forall(ast_manager& m, unsigned num_bound, app* const* bound, expr* n) {
+    return mk_quantifier(true, m, num_bound, bound, n);
+}
+
+expr_ref mk_exists(ast_manager& m, unsigned num_bound, app* const* bound, expr* n) {
+    return mk_quantifier(false, m, num_bound, bound, n);
 }

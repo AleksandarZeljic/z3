@@ -342,6 +342,8 @@
     <Compile Include="ConstructorList.cs" />
     <Compile Include="DatatypeExpr.cs" />
     <Compile Include="DatatypeSort.cs" />
+    <Compile Include="FiniteDomainExpr.cs" />
+    <Compile Include="FiniteDomainNum.cs" />
     <Compile Include="FPExpr.cs" />
     <Compile Include="FPNum.cs" />
     <Compile Include="FPRMExpr.cs" />
@@ -365,13 +367,18 @@
     <Compile Include="IntSymbol.cs" />
     <Compile Include="ListSort.cs" />
     <Compile Include="Model.cs" />
+    <Compile Include="Optimize.cs" />
     <Compile Include="Params.cs" />
     <Compile Include="ParamDescrs.cs" />
     <Compile Include="Pattern.cs" />
     <Compile Include="RatNum.cs" />
     <Compile Include="RealExpr.cs" />
     <Compile Include="RealSort.cs" />
+    <Compile Include="ReExpr.cs" />
     <Compile Include="RelationSort.cs" />
+    <Compile Include="ReSort.cs" />
+    <Compile Include="SeqExpr.cs" />
+    <Compile Include="SeqSort.cs" />
     <Compile Include="SetSort.cs" />
     <Compile Include="Statistics.cs" />
     <Compile Include="Status.cs" />

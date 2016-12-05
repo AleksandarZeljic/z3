@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _THEORY_BV_PARAMS_H_
-#define _THEORY_BV_PARAMS_H_
+#ifndef THEORY_BV_PARAMS_H_
+#define THEORY_BV_PARAMS_H_
 
 #include"params.h"
 
@@ -39,12 +39,14 @@ struct theory_bv_params {
         m_bv_lazy_le(false),
         m_bv_cc(false),
         m_bv_blast_max_size(INT_MAX),
-        m_bv_enable_int2bv2int(false) {
+        m_bv_enable_int2bv2int(true) {
         updt_params(p);
     }
     
     void updt_params(params_ref const & p);
+
+    void display(std::ostream & out) const;
 };
 
-#endif /* _THEORY_BV_PARAMS_H_ */
+#endif /* THEORY_BV_PARAMS_H_ */
 

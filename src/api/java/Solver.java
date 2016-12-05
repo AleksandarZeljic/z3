@@ -22,8 +22,7 @@ import com.microsoft.z3.enumerations.Z3_lbool;
 /**
  * Solvers.
  **/
-public class Solver extends Z3Object
-{
+public class Solver extends Z3Object {
     /**
      * A string that describes all available solver parameters.
      **/
@@ -57,8 +56,8 @@ public class Solver extends Z3Object
 
     /**
      * The current number of backtracking points (scopes). 
-     * @see pop 
-     * @see push
+     * @see #pop
+     * @see #push
      **/
     public int getNumScopes()
     {
@@ -68,7 +67,7 @@ public class Solver extends Z3Object
 
     /**
      * Creates a backtracking point. 
-     * @see pop
+     * @see #pop
      **/
     public void push()
     {
@@ -89,7 +88,7 @@ public class Solver extends Z3Object
      * Remarks: Note that
      * an exception is thrown if {@code n} is not smaller than
      * {@code NumScopes} 
-     * @see push
+     * @see #push
      **/
     public void pop(int n)
     {
@@ -127,24 +126,26 @@ public class Solver extends Z3Object
      * using the Boolean constants in ps.
      *
      * Remarks: 
-     * This API is an alternative to <see cref="Check"/> with assumptions for
+     * This API is an alternative to {@link #check()} with assumptions for
      * extracting unsat cores.
      * Both APIs can be used in the same solver. The unsat core will contain a
      * combination
-     * of the Boolean variables provided using <see cref="AssertAndTrack"/>
+     * of the Boolean variables provided using {@code #assertAndTrack}
      * and the Boolean literals
-     * provided using <see cref="Check"/> with assumptions.
+     * provided using {@link #check()} with assumptions.
      **/
     public void assertAndTrack(BoolExpr[] constraints, BoolExpr[] ps)
     {
         getContext().checkContextMatch(constraints);
         getContext().checkContextMatch(ps);
-        if (constraints.length != ps.length)
+        if (constraints.length != ps.length) {
             throw new Z3Exception("Argument size mismatch");
+        }
 
-        for (int i = 0; i < constraints.length; i++)
+        for (int i = 0; i < constraints.length; i++) {
             Native.solverAssertAndTrack(getContext().nCtx(), getNativeObject(),
-                    constraints[i].getNativeObject(), ps[i].getNativeObject());
+                constraints[i].getNativeObject(), ps[i].getNativeObject());
+        }
     }
 
     /** 
@@ -152,13 +153,13 @@ public class Solver extends Z3Object
      * using the Boolean constant p.
      * 
      * Remarks: 
-     * This API is an alternative to <see cref="Check"/> with assumptions for
+     * This API is an alternative to {@link #check} with assumptions for
      * extracting unsat cores.
      * Both APIs can be used in the same solver. The unsat core will contain a
      * combination
-     * of the Boolean variables provided using <see cref="AssertAndTrack"/>
+     * of the Boolean variables provided using {@link #assertAndTrack}
      * and the Boolean literals
-     * provided using <see cref="Check"/> with assumptions.
+     * provided using {@link #check} with assumptions.
      */ 
     public void assertAndTrack(BoolExpr constraint, BoolExpr p)
     {
@@ -176,8 +177,7 @@ public class Solver extends Z3Object
      **/
     public int getNumAssertions()
     {
-        ASTVector assrts = new ASTVector(getContext(), Native.solverGetAssertions(
-                getContext().nCtx(), getNativeObject()));
+        ASTVector assrts = new ASTVector(getContext(), Native.solverGetAssertions(getContext().nCtx(), getNativeObject()));
         return assrts.size();
     }
 
@@ -188,32 +188,28 @@ public class Solver extends Z3Object
      **/
     public BoolExpr[] getAssertions()
     {
-        ASTVector assrts = new ASTVector(getContext(), Native.solverGetAssertions(
-                getContext().nCtx(), getNativeObject()));
-        int n = assrts.size();
-        BoolExpr[] res = new BoolExpr[n];
-        for (int i = 0; i < n; i++)
-            res[i] = new BoolExpr(getContext(), assrts.get(i).getNativeObject());
-        return res;
+        ASTVector assrts = new ASTVector(getContext(), Native.solverGetAssertions(getContext().nCtx(), getNativeObject()));
+        return assrts.ToBoolExprArray();
     }
 
     /**
      * Checks whether the assertions in the solver are consistent or not.
      * Remarks:  
-     * @see getModel
-     * @see getUnsatCore
-     * @see getProof 
+     * @see #getModel
+     * @see #getUnsatCore
+     * @see #getProof
      **/
     public Status check(Expr... assumptions)
     {
         Z3_lbool r;
-        if (assumptions == null)
+        if (assumptions == null) {
             r = Z3_lbool.fromInt(Native.solverCheck(getContext().nCtx(),
-                    getNativeObject()));
-        else
+                getNativeObject()));
+        } else {
             r = Z3_lbool.fromInt(Native.solverCheckAssumptions(getContext()
-                    .nCtx(), getNativeObject(), (int) assumptions.length, AST
-                    .arrayToNative(assumptions)));
+                .nCtx(), getNativeObject(), assumptions.length, AST
+                .arrayToNative(assumptions)));
+        }
         switch (r)
         {
         case Z3_L_TRUE:
@@ -228,9 +224,9 @@ public class Solver extends Z3Object
     /**
      * Checks whether the assertions in the solver are consistent or not.
      * Remarks:  
-     * @see getModel
-     * @see getUnsatCore
-     * @see getProof 
+     * @see #getModel
+     * @see #getUnsatCore
+     * @see #getProof
      **/
     public Status check()
     {
@@ -249,10 +245,11 @@ public class Solver extends Z3Object
     public Model getModel()
     {
         long x = Native.solverGetModel(getContext().nCtx(), getNativeObject());
-        if (x == 0)
+        if (x == 0) {
             return null;
-        else
+        } else {
             return new Model(getContext(), x);
+        }
     }
 
     /**
@@ -267,10 +264,11 @@ public class Solver extends Z3Object
     public Expr getProof()
     {
         long x = Native.solverGetProof(getContext().nCtx(), getNativeObject());
-        if (x == 0)
+        if (x == 0) {
             return null;
-        else
+        } else {
             return Expr.create(getContext(), x);
+        }
     }
 
     /**
@@ -282,16 +280,11 @@ public class Solver extends Z3Object
      * 
      * @throws Z3Exception
      **/
-    public Expr[] getUnsatCore()
+    public BoolExpr[] getUnsatCore()
     {
 
-        ASTVector core = new ASTVector(getContext(), Native.solverGetUnsatCore(
-                getContext().nCtx(), getNativeObject()));
-        int n = core.size();
-        Expr[] res = new Expr[n];
-        for (int i = 0; i < n; i++)
-            res[i] = Expr.create(getContext(), core.get(i).getNativeObject());
-        return res;
+        ASTVector core = new ASTVector(getContext(), Native.solverGetUnsatCore(getContext().nCtx(), getNativeObject()));        
+        return core.ToBoolExprArray();
     }
 
     /**
@@ -302,6 +295,14 @@ public class Solver extends Z3Object
     {
         return Native.solverGetReasonUnknown(getContext().nCtx(),
                 getNativeObject());
+    }
+
+    /**
+     * Create a clone of the current solver with respect to{@code ctx}.
+     */
+    public Solver translate(Context ctx) 
+    {
+	return new Solver(ctx, Native.solverTranslate(getContext().nCtx(), getNativeObject(), ctx.nCtx()));
     }
 
     /**
@@ -318,16 +319,11 @@ public class Solver extends Z3Object
     /**
      * A string representation of the solver.
      **/
+    @Override
     public String toString()
     {
-        try
-        {
-            return Native
-                    .solverToString(getContext().nCtx(), getNativeObject());
-        } catch (Z3Exception e)
-        {
-            return "Z3Exception: " + e.getMessage();
-        }
+        return Native
+                .solverToString(getContext().nCtx(), getNativeObject());
     }
 
     Solver(Context ctx, long obj)
@@ -335,15 +331,13 @@ public class Solver extends Z3Object
         super(ctx, obj);
     }
 
-    void incRef(long o)
-    {
-        getContext().getSolverDRQ().incAndClear(getContext(), o);
-        super.incRef(o);
+    @Override
+    void incRef() {
+        Native.solverIncRef(getContext().nCtx(), getNativeObject());
     }
 
-    void decRef(long o)
-    {
-        getContext().getSolverDRQ().add(o);
-        super.decRef(o);
+    @Override
+    void addToReferenceQueue() {
+        getContext().getSolverDRQ().storeReference(getContext(), this);
     }
 }

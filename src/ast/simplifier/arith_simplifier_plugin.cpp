@@ -43,8 +43,7 @@ bool arith_simplifier_plugin::is_neg_poly(expr * t) const {
     if (m_util.is_mul(t)) {
         t = to_app(t)->get_arg(0);
         rational r;
-        bool is_int;
-        if (m_util.is_numeral(t, r, is_int))
+        if (is_numeral(t, r))
             return r.is_neg();
     }
     return false;
@@ -406,8 +405,9 @@ bool arith_simplifier_plugin::reduce(func_decl * f, unsigned num_args, expr * co
     case OP_POWER:                    return false;
     case OP_ABS:      SASSERT(num_args == 1); mk_abs(args[0], result); break;
     case OP_IRRATIONAL_ALGEBRAIC_NUM: return false;
+    case OP_DIV_0: return false;
+    case OP_IDIV_0: return false;
     default:
-        UNREACHABLE();
         return false;
     }
     TRACE("arith_simplifier_plugin", tout << mk_pp(result.get(), m_manager) << "\n";);

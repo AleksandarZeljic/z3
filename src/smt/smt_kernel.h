@@ -24,8 +24,8 @@ Revision History:
         smt::solver     ---> smt::kernel
         default_solver  ---> smt::solver
 --*/
-#ifndef _SMT_KERNEL_H_
-#define _SMT_KERNEL_H_
+#ifndef SMT_KERNEL_H_
+#define SMT_KERNEL_H_
 
 #include"ast.h"
 #include"params.h"
@@ -50,6 +50,8 @@ namespace smt {
 
         ~kernel();
 
+        static void copy(kernel& src, kernel& dst);
+
         ast_manager & m() const;
         
         /**
@@ -68,7 +70,8 @@ namespace smt {
            This method uses the "asserted" proof as a justification for e.
         */
         void assert_expr(expr * e);
-        
+
+        void assert_expr(expr_ref_vector const& es);
         /**
            \brief Assert the given assertion with the given proof as a justification.
         */
@@ -120,6 +123,26 @@ namespace smt {
         */
         lbool check(unsigned num_assumptions = 0, expr * const * assumptions = 0);
 
+        lbool check(expr_ref_vector const& asms) { return check(asms.size(), asms.c_ptr()); }
+
+        lbool check(app_ref_vector const& asms) { return check(asms.size(), (expr* const*)asms.c_ptr()); }
+
+        /**
+           \brief extract consequences among variables.
+        */
+        lbool get_consequences(expr_ref_vector const& assumptions, expr_ref_vector const& vars, 
+                               expr_ref_vector& conseq, expr_ref_vector& unfixed);
+
+        /**
+          \brief find mutually exclusive variables.
+         */
+        lbool find_mutexes(expr_ref_vector const& vars, vector<expr_ref_vector>& mutexes);
+
+        /**
+           \brief Preferential SAT. 
+        */
+        lbool preferred_sat(expr_ref_vector const& asms, vector<expr_ref_vector>& cores);
+
         /**
            \brief Return the model associated with the last check command.
         */
@@ -152,6 +175,12 @@ namespace smt {
            \brief Return a string describing the failure.
         */
         std::string last_failure_as_string() const;
+
+
+        /**
+           \brief Set the reason for unknown.
+        */
+        void set_reason_unknown(char const* msg);
 
         /**
            \brief Return the set of formulas assigned by the kernel.
@@ -202,18 +231,7 @@ namespace smt {
            \brief Display statistics in low level format.
         */
         void display_istatistics(std::ostream & out) const;
-        
-        /**
-           \brief Interrupt the kernel. 
-        */
-        void set_cancel(bool f = true);
-        void cancel() { set_cancel(true); }
-
-        /**
-           \brief Reset interruption.
-        */
-        void reset_cancel() { set_cancel(false); }
-        
+                
         /**
            \brief Return true if the kernel was interrupted.
         */

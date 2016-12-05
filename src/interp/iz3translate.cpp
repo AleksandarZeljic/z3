@@ -132,7 +132,7 @@ public:
             // if(range_is_empty(r))
             range r = ast_scope(quanted);
             if(range_is_empty(r))
-                throw "can't skolemize";
+                throw iz3_exception("can't skolemize");
             if(frame == INT_MAX || !in_range(frame,r))
                 frame = range_max(r); // this is desperation -- may fail
             if(frame >= frames) frame = frames - 1;
@@ -274,7 +274,7 @@ public:
                         ast neglit = mk_not(arg(con,i));
                         res.erase(neglit);
                     }
-                }	    
+                }        
             }
         }
 #if 0
@@ -342,6 +342,7 @@ public:
                     else
                         cls1.push_back(cls2[j]);
                 }
+                (void)found_pivot2;
                 assert(found_pivot2);
                 return;
             }
@@ -612,7 +613,7 @@ public:
             rng = range_glb(rng,ast_scope(lit));
         }
         if(range_is_empty(rng)) return -1;
-	int hi = range_max(rng);
+    int hi = range_max(rng);
         if(hi >= frames) return frames - 1;
         return hi;
     }
@@ -966,7 +967,7 @@ public:
         get_linear_coefficients(t,coeffs);
         if(coeffs.size() == 0)
             return make_int("1"); // arbitrary
-        rational d = coeffs[0];
+        rational d = abs(coeffs[0]);
         for(unsigned i = 1; i < coeffs.size(); i++){
             d = gcd(d,coeffs[i]);
         }
@@ -1020,6 +1021,12 @@ public:
                 my_prems.push_back(prems[i]);
                 my_coeffs.push_back(make_int(c));
                 my_prem_cons.push_back(conc(prem(proof,i)));
+            }
+            else if(c.is_neg()){
+                int j = (i % 2 == 0) ? i + 1 : i - 1;
+                my_prems.push_back(prems[j]);
+                my_coeffs.push_back(make_int(-coeffs[j]));
+                my_prem_cons.push_back(conc(prem(proof,j)));
             }
         }
         ast my_con = sum_inequalities(my_coeffs,my_prem_cons);
@@ -1076,8 +1083,10 @@ public:
             return best_coeff;
         }
         else
-            if(op(t) != Numeral)
+            if(op(t) != Numeral){
+                v = get_linear_var(t);
                 return(get_coeff(t));
+            }
         return rational(0);
     }
 
@@ -1086,10 +1095,10 @@ public:
         rational xcoeff = get_first_coefficient(arg(x,0),xvar);
         rational ycoeff = get_first_coefficient(arg(y,0),yvar);
         if(xcoeff == rational(0) || ycoeff == rational(0) || xvar != yvar)
-            throw "bad assign-bounds lemma";
+            throw unsupported();  // can be caused by non-linear arithmetic
         rational ratio = xcoeff/ycoeff;
         if(denominator(ratio) != rational(1))
-            throw "bad assign-bounds lemma";
+            throw unsupported(); // can this ever happen?
         return make_int(ratio); // better be integer!
     }
 
@@ -1098,7 +1107,7 @@ public:
         get_assign_bounds_coeffs(proof,farkas_coeffs);
         int nargs = num_args(con);
         if(nargs != (int)(farkas_coeffs.size()))
-            throw "bad assign-bounds theory lemma";
+            throw unsupported(); // should never happen
 #if 0
         if(farkas_coeffs[0] != make_int(rational(1)))
             farkas_coeffs[0] = make_int(rational(1));
@@ -1139,7 +1148,7 @@ public:
         get_assign_bounds_rule_coeffs(proof,farkas_coeffs);
         int nargs = num_prems(proof)+1;
         if(nargs != (int)(farkas_coeffs.size()))
-            throw "bad assign-bounds theory lemma";
+            throw iz3_exception("bad assign-bounds theory lemma");
 #if 0
         if(farkas_coeffs[0] != make_int(rational(1)))
             farkas_coeffs[0] = make_int(rational(1));
@@ -1174,6 +1183,34 @@ public:
         ast res = iproof->make_farkas(mk_false(),my_hyps,my_cons,my_coeffs);
         res = iproof->make_cut_rule(farkas_con,farkas_coeffs[0],conc(proof),res);
         return res;
+    }
+
+    ast GomoryCutRule2Farkas(const ast &proof, const ast &con, std::vector<Iproof::node> prems){
+        std::vector<Iproof::node>  my_prems = prems;
+        std::vector<ast>  my_coeffs;
+        std::vector<Iproof::node>  my_prem_cons;
+        get_gomory_cut_coeffs(proof,my_coeffs);
+        int nargs = num_prems(proof);
+        if(nargs != (int)(my_coeffs.size()))
+            throw "bad gomory-cut theory lemma";
+        for(int i = 0; i < nargs; i++)
+            my_prem_cons.push_back(conc(prem(proof,i)));
+        ast my_con = normalize_inequality(sum_inequalities(my_coeffs,my_prem_cons));
+        Iproof::node hyp = iproof->make_hypothesis(mk_not(my_con));
+        my_prems.push_back(hyp);
+        my_coeffs.push_back(make_int("1"));
+        my_prem_cons.push_back(mk_not(my_con));
+        Iproof::node res = iproof->make_farkas(mk_false(),my_prems,my_prem_cons,my_coeffs);
+        ast t = arg(my_con,0);
+        ast c = arg(my_con,1);
+        ast d = gcd_of_coefficients(t);
+        /*
+        t = z3_simplify(mk_idiv(t,d));
+        c = z3_simplify(mk_idiv(c,d));
+        ast cut_con = make(op(my_con),t,c);
+        */
+        ast cut_con = con;
+        return iproof->make_cut_rule(my_con,d,cut_con,res);
     }
 
     Iproof::node RewriteClause(Iproof::node clause, const ast &rew){
@@ -1376,6 +1413,7 @@ public:
 
         hash_map<ast,ast> dual_map;
         std::vector<ast> cvec, vars_seen;
+        m().enable_int_real_coercions(true);
         ast rhs = make_real(rational(0));
         for(unsigned i = 0; i < npcons.size(); i++){
             ast c= mk_fresh_constant("@c",real_type());
@@ -1415,7 +1453,7 @@ public:
 
         std::vector<ast> vals = cvec;
         if(!is_sat(cnstrs,new_proof,vals))
-            throw "Proof error!";
+            throw iz3_exception("Proof error!");
         std::vector<rational> rat_farkas_coeffs;
         for(unsigned i = 0; i < cvec.size(); i++){
             ast bar = vals[i];
@@ -1423,7 +1461,7 @@ public:
             if(is_numeral(bar,r))
                 rat_farkas_coeffs.push_back(r);
             else
-                throw "Proof error!";
+                throw iz3_exception("Proof error!");
         }
         rational the_lcd = lcd(rat_farkas_coeffs);
         std::vector<ast> farkas_coeffs;
@@ -1471,7 +1509,7 @@ public:
         ast new_proof;
         std::vector<ast> dummy;
         if(is_sat(npcons,new_proof,dummy))
-            throw "Proof error!";
+            throw iz3_exception("Proof error!");
         pfrule dk = pr(new_proof);
         int nnp = num_prems(new_proof);
         std::vector<Iproof::node> my_prems;
@@ -1532,7 +1570,7 @@ public:
         ast new_proof;
         std::vector<ast> dummy;
         if(is_sat(npcons,new_proof,dummy))
-            throw "Proof error!";
+            throw iz3_exception("Proof error!");
         pfrule dk = pr(new_proof);
         int nnp = num_prems(new_proof);
         std::vector<Iproof::node> my_prems;
@@ -1702,14 +1740,16 @@ public:
                     return res;
                 }
             }
-            if(dk == PR_MODUS_PONENS && expect_clause && op(con) == Or){
+            if(dk == PR_MODUS_PONENS && expect_clause && op(con) == Or && op(conc(prem(proof,0))) == Or){
                 Iproof::node clause = translate_main(prem(proof,0),true);
                 res = RewriteClause(clause,prem(proof,1));
                 return res;
             }
 
+#if 0
             if(dk == PR_MODUS_PONENS && expect_clause && op(con) == Or)
                 std::cout << "foo!\n";
+#endif
 
             // no idea why this shows up
             if(dk == PR_MODUS_PONENS_OEQ){
@@ -1882,7 +1922,7 @@ public:
                     }
                     case GCDTestKind: {
                         std::vector<rational> farkas_coeffs;
-                        get_farkas_coeffs(proof,farkas_coeffs);
+                        get_broken_gcd_test_coeffs(proof,farkas_coeffs);
                         if(farkas_coeffs.size() != nprems){
                             pfgoto(proof);
                             throw unsupported();
@@ -1902,6 +1942,13 @@ public:
                             res =  AssignBoundsRule2Farkas(proof, conc(proof), args);
                         else
                             res = AssignBounds2Farkas(proof,conc(proof));
+                        break;
+                    }
+                    case GomoryCutKind: {
+                        if(args.size() > 0)
+                            res =  GomoryCutRule2Farkas(proof, conc(proof), args);
+                        else
+                            throw unsupported();
                         break;
                     }
                     case EqPropagateKind: {
@@ -1965,9 +2012,20 @@ public:
                 res = make(commute,pf,comm_equiv);
                 break;
             }
+            case PR_NOT_OR_ELIM:
+            case PR_AND_ELIM: {
+                std::vector<ast> rule_ax, res_conc;
+                ast piv = conc(prem(proof,0));
+                rule_ax.push_back(make(Not,piv));
+                rule_ax.push_back(con);
+                ast pf = iproof->make_axiom(rule_ax);
+                res_conc.push_back(con);
+                res = iproof->make_resolution(piv,res_conc,pf,args[0]);
+                break;
+            }
             default:
-                pfgoto(proof);
-                assert(0 && "translate_main: unsupported proof rule");
+                //                pfgoto(proof);                
+                // SASSERT(0 && "translate_main: unsupported proof rule");
                 throw unsupported();
             }
         }
@@ -1991,11 +2049,23 @@ public:
             locality.clear();
 #endif
             iproof = iz3proof_itp::create(this,range_downward(i),weak_mode());
-            Iproof::node ipf = translate_main(proof);
-            ast itp = iproof->interpolate(ipf);
-            itps.push_back(itp);
-            delete iproof;
-            clear_translation();
+            try {
+                Iproof::node ipf = translate_main(proof);
+                ast itp = iproof->interpolate(ipf);
+                itps.push_back(itp);
+                delete iproof;
+                clear_translation();
+            }
+            catch (const iz3proof_itp::proof_error &) {
+                delete iproof;
+                clear_translation();
+                throw iz3proof::proof_error();
+            }
+            catch (const unsupported &exc) {
+                delete iproof;
+                clear_translation();
+                throw exc;
+            }
         }
         // Very simple proof -- lemma of the empty clause with computed interpolation
         iz3proof::node Ipf = dst.make_lemma(std::vector<ast>(),itps);  // builds result in dst
@@ -2003,10 +2073,10 @@ public:
     }
 
     iz3translation_full(iz3mgr &mgr,
-			iz3secondary *_secondary,
+            iz3secondary *_secondary,
                         const std::vector<std::vector<ast> > &cnsts,
-			const std::vector<int> &parents,
-			const std::vector<ast> &theory)
+            const std::vector<int> &parents,
+            const std::vector<ast> &theory)
         : iz3translation(mgr, cnsts, parents, theory)
     {
         frames = cnsts.size();
@@ -2027,10 +2097,10 @@ public:
 #ifdef IZ3_TRANSLATE_FULL
 
 iz3translation *iz3translation::create(iz3mgr &mgr,
-				       iz3secondary *secondary,
-				       const std::vector<std::vector<ast> > &cnsts,
-				       const std::vector<int> &parents,
-				       const std::vector<ast> &theory){
+                       iz3secondary *secondary,
+                       const std::vector<std::vector<ast> > &cnsts,
+                       const std::vector<int> &parents,
+                       const std::vector<ast> &theory){
     return new iz3translation_full(mgr,secondary,cnsts,parents,theory);
 }
 

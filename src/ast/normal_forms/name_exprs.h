@@ -16,8 +16,8 @@ Author:
 Notes:
 
 --*/
-#ifndef _NAME_EXPRS_H_
-#define _NAME_EXPRS_H_
+#ifndef NAME_EXPRS_H_
+#define NAME_EXPRS_H_
 
 #include"ast.h"
 #include"defined_names.h"
@@ -37,9 +37,6 @@ public:
                             proof_ref & p                      // [OUT] proof for (iff n p)
                             ) = 0;
     
-    virtual void set_cancel(bool f) = 0;
-    void cancel() { set_cancel(true); }
-    void reset_cancel() { set_cancel(false); }
     virtual void reset() = 0;
 };
 

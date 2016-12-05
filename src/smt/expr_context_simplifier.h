@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _EXPR_CONTEXT_SIMPLIFIER_H_
-#define _EXPR_CONTEXT_SIMPLIFIER_H_
+#ifndef EXPR_CONTEXT_SIMPLIFIER_H_
+#define EXPR_CONTEXT_SIMPLIFIER_H_
 
 #include "ast.h"
 #include "obj_hashtable.h"
@@ -77,8 +77,7 @@ public:
     
     void collect_statistics(statistics & st) const { m_solver.collect_statistics(st); }
     void reset_statistics() { m_solver.reset_statistics(); }
-    void set_cancel(bool f) { m_solver.set_cancel(f); }
 };
 
-#endif /* _EXPR_CONTEXT_SIMPLIFIER_H__ */
+#endif /* EXPR_CONTEXT_SIMPLIFIER_H_ */
 

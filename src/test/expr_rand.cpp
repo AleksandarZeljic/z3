@@ -1,3 +1,9 @@
+
+/*++
+Copyright (c) 2015 Microsoft Corporation
+
+--*/
+
 #include "expr_rand.h"
 #include "ast_pp.h"
 #include "bv_decl_plugin.h"
@@ -32,7 +38,7 @@ void tst_expr_arith(unsigned num_files) {
         er.get_next(m.mk_bool_sort(), e);
         ast_smt_pp pp(m);
 
-        pp.set_logic("QF_AUFLIA");
+        pp.set_logic(symbol("QF_AUFLIA"));
         std::ostringstream buffer;
         buffer << "random_arith_" << i << ".smt";
         std::cout << buffer.str() << "\n";
@@ -75,7 +81,7 @@ void tst_expr_rand(unsigned num_files) {
         er.get_next(m.mk_bool_sort(), e);
         ast_smt_pp pp(m);
 
-        pp.set_logic("QF_AUFBV");
+        pp.set_logic(symbol("QF_AUFBV"));
         std::ostringstream buffer;
         buffer << "random_bv_" << i << ".smt";
         std::cout << buffer.str() << "\n";

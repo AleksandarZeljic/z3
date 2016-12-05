@@ -22,8 +22,7 @@ import com.microsoft.z3.enumerations.Z3_symbol_kind;
 /**
  * Symbols are used to name several term and type constructors.
  **/
-public class Symbol extends Z3Object
-{
+public class Symbol extends Z3Object {
     /**
      * The kind of the symbol (int or string)
      **/
@@ -49,23 +48,26 @@ public class Symbol extends Z3Object
         return getKind() == Z3_symbol_kind.Z3_STRING_SYMBOL;
     }
 
+    @Override
+    public boolean equals(Object o)
+    {
+        if (o == this) return true;
+        if (!(o instanceof Symbol)) return false;
+        Symbol other = (Symbol) o;
+        return this.getNativeObject() == other.getNativeObject();
+    }
+
     /**
      * A string representation of the symbol.
      **/
-    public String toString()
-    {
-        try
-        {
-            if (isIntSymbol())
-                return Integer.toString(((IntSymbol) this).getInt());
-            else if (isStringSymbol())
-                return ((StringSymbol) this).getString();
-            else
-                return new String(
-                        "Z3Exception: Unknown symbol kind encountered.");
-        } catch (Z3Exception ex)
-        {
-            return new String("Z3Exception: " + ex.getMessage());
+    @Override
+    public String toString() {
+        if (isIntSymbol()) {
+            return Integer.toString(((IntSymbol) this).getInt());
+        } else if (isStringSymbol()) {
+            return ((StringSymbol) this).getString();
+        } else {
+            return "Z3Exception: Unknown symbol kind encountered.";
         }
     }
 
@@ -75,6 +77,17 @@ public class Symbol extends Z3Object
     protected Symbol(Context ctx, long obj)
     {
         super(ctx, obj);
+    }
+
+    @Override
+    void incRef() {
+        // Symbol does not require tracking.
+    }
+
+    @Override
+    void addToReferenceQueue() {
+
+        // Symbol does not require tracking.
     }
 
     static Symbol create(Context ctx, long obj)

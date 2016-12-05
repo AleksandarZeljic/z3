@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _PREPROCESSOR_PARAMS_H_
-#define _PREPROCESSOR_PARAMS_H_
+#ifndef PREPROCESSOR_PARAMS_H_
+#define PREPROCESSOR_PARAMS_H_
 
 #include"pattern_inference_params.h"
 #include"bit_blaster_params.h"
@@ -83,6 +83,8 @@ public:
     void updt_local_params(params_ref const & p);
 
     void updt_params(params_ref const & p);
+
+    void display(std::ostream & out) const;
 };
 
-#endif /* _PREPROCESSOR_PARAMS_H_ */
+#endif /* PREPROCESSOR_PARAMS_H_ */

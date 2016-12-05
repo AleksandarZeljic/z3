@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _BUFFER_H_
-#define _BUFFER_H_
+#ifndef BUFFER_H_
+#define BUFFER_H_
 
 #include<string.h>
 #include"memory_manager.h"
@@ -32,8 +32,8 @@ protected:
     
     void free_memory() {
         if (m_buffer != reinterpret_cast<T*>(m_initial_buffer)) {
-        memory::deallocate(m_buffer);
-            }
+            dealloc_svect(m_buffer);
+        }
     }
 
     void expand() {
@@ -66,57 +66,57 @@ public:
     typedef const T * const_iterator;
 
     buffer():
-    m_buffer(reinterpret_cast<T *>(m_initial_buffer)),
-    m_pos(0),
-    m_capacity(INITIAL_SIZE) {
+        m_buffer(reinterpret_cast<T *>(m_initial_buffer)),
+        m_pos(0),
+        m_capacity(INITIAL_SIZE) {
     }
-
+    
     buffer(const buffer & source):
-    m_buffer(reinterpret_cast<T *>(m_initial_buffer)),
-    m_pos(0),
-    m_capacity(INITIAL_SIZE) {
+        m_buffer(reinterpret_cast<T *>(m_initial_buffer)),
+        m_pos(0),
+        m_capacity(INITIAL_SIZE) {
         unsigned sz = source.size();
         for(unsigned i = 0; i < sz; i++) {
             push_back(source.m_buffer[i]);
         }
     }
-
+    
     buffer(unsigned sz, const T & elem):
-    m_buffer(reinterpret_cast<T *>(m_initial_buffer)),
-    m_pos(0),
-    m_capacity(INITIAL_SIZE) {
+        m_buffer(reinterpret_cast<T *>(m_initial_buffer)),
+        m_pos(0),
+        m_capacity(INITIAL_SIZE) {
         for (unsigned i = 0; i < sz; i++) {
             push_back(elem);
         }
         SASSERT(size() == sz);
     }
-
+    
     ~buffer() {
         destroy();
     }
-
+    
     void reset() { 
         if (CallDestructors) {
             destroy_elements();
         }
         m_pos = 0;
     }
-
+    
     void finalize() {
         destroy();
         m_buffer   = reinterpret_cast<T *>(m_initial_buffer);
         m_pos      = 0;
         m_capacity = INITIAL_SIZE;
     }
-
+    
     unsigned size() const { 
         return m_pos;
     }
-
+    
     bool empty() const {
         return m_pos == 0;
     }
-
+    
     iterator begin() { 
         return m_buffer; 
     }
@@ -130,15 +130,15 @@ public:
         if (CallDestructors) {
             iterator e  = end();
             for (; it != e; ++it) {
-            it->~T();
+                it->~T();
             }
         }
     }
-
+    
     const_iterator begin() const { 
         return m_buffer; 
     }
-
+    
     const_iterator end() const { 
         return m_buffer + size(); 
     }
@@ -257,5 +257,5 @@ public:
     sbuffer(unsigned sz, const T& elem) : buffer<T, false, INITIAL_SIZE>(sz,elem) {}
 };
 
-#endif /* _BUFFER_H_ */
+#endif /* BUFFER_H_ */
 

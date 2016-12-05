@@ -16,8 +16,8 @@ Author:
 Notes:
 
 --*/
-#ifndef _BOOL_REWRITER_H_
-#define _BOOL_REWRITER_H_
+#ifndef BOOL_REWRITER_H_
+#define BOOL_REWRITER_H_
 
 #include"ast.h"
 #include"rewriter.h"
@@ -74,6 +74,8 @@ class bool_rewriter {
     bool simp_nested_eq_ite(expr * t, expr_fast_mark1 & neg_lits, expr_fast_mark2 & pos_lits, expr_ref & result);
     bool local_ctx_simp(unsigned num_args, expr * const * args, expr_ref & result);
     br_status try_ite_value(app * ite, app * val, expr_ref & result);
+
+    void push_new_arg(expr* arg, expr_ref_vector& new_args, expr_fast_mark1& neg_lits, expr_fast_mark2& pos_lits);
 
 public:
     bool_rewriter(ast_manager & m, params_ref const & p = params_ref()):m_manager(m), m_local_ctx_cost(0) { updt_params(p); }

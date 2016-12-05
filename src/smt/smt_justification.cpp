@@ -52,6 +52,7 @@ namespace smt {
                   tout << lits[i] << " ";
               }
               tout << "\n";);
+        SASSERT(m_num_literals > 0);
     }
 
     unit_resolution_justification::unit_resolution_justification(justification * js, 
@@ -68,6 +69,7 @@ namespace smt {
                   tout << lits[i] << " ";
               }
               tout << "\n";);
+        SASSERT(num_lits != 0);
     }
 
     unit_resolution_justification::~unit_resolution_justification() {
@@ -308,7 +310,8 @@ namespace smt {
         simple_justification(r, num_lits, lits),
         m_num_eqs(num_eqs) {
         m_eqs = new (r) enode_pair[num_eqs];
-        memcpy(m_eqs, eqs, sizeof(enode_pair) * num_eqs);
+        if (num_eqs != 0)
+            memcpy(m_eqs, eqs, sizeof(enode_pair) * num_eqs);
         DEBUG_CODE({
             for (unsigned i = 0; i < num_eqs; i++) {
                 SASSERT(eqs[i].first->get_root() == eqs[i].second->get_root());

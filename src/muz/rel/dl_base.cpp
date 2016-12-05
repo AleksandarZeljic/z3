@@ -89,8 +89,7 @@ namespace datalog {
     void relation_base::reset() {
         ast_manager & m = get_plugin().get_ast_manager();
         app_ref bottom_ref(m.mk_false(), m);
-        scoped_ptr<relation_mutator_fn> reset_fn = 
-            get_manager().mk_filter_interpreted_fn(static_cast<relation_base &>(*this), bottom_ref);
+        scoped_ptr<relation_mutator_fn> reset_fn = get_manager().mk_filter_interpreted_fn(*this, bottom_ref);
         if(!reset_fn) {
             NOT_IMPLEMENTED_YET();
         }
@@ -392,7 +391,7 @@ namespace datalog {
             std::ostringstream buffer;
             buffer << "creating large table of size " << upper_bound;
             if (p) buffer << " for relation " << p->get_name();
-            warning_msg(buffer.str().c_str());
+            warning_msg("%s", buffer.str().c_str());
         }
 
         for(table_element i = 0; i < upper_bound; i++) {
@@ -485,5 +484,4 @@ namespace datalog {
         }
         brw.mk_or(disjs.size(), disjs.c_ptr(), fml);        
     }
-
 }

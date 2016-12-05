@@ -67,25 +67,27 @@ static void display_statistics(
         p.set_uint("profile_milliseconds_threshold", 100);
         ctx.updt_params(p);
 
-        out << "--------------\n";
-        out << "original rules\n";
-        orig_rules.display(out);
+        IF_VERBOSE(2, 
+                   out << "--------------\n";
+                   out << "original rules\n";
+                   orig_rules.display(out);
+                   
+                   out << "---------------\n";
+                   out << "generated rules\n";
+                   ctx.display_rules(out);
 
-        out << "---------------\n";
-        out << "generated rules\n";
-        ctx.display_rules(out);
-
-        out << "--------------\n";
-        out << "instructions  \n";
-        code.display(*ctx.get_rel_context(), out);
-
-        out << "--------------\n";
-        out << "big relations \n";
-        ex_ctx.report_big_relations(1000, out);
+                   out << "--------------\n";
+                   out << "instructions  \n";
+                   code.display(ex_ctx, out);
+                   
+                   out << "--------------\n";
+                   out << "big relations \n";
+                   ex_ctx.report_big_relations(1000, out););
     }
-    out << "--------------\n";
-    out << "relation sizes\n";
-    ctx.get_rel_context()->get_rmanager().display_relation_sizes(out);
+    IF_VERBOSE(2, 
+               out << "--------------\n";
+               out << "relation sizes\n";
+               ctx.get_rel_context()->get_rmanager().display_relation_sizes(out););
 
     if (verbose) {
         out << "--------------\n";
@@ -109,7 +111,7 @@ static void on_timeout() {
     exit(0);
 }
 
-static void on_ctrl_c(int) {
+static void STD_CALL on_ctrl_c(int) {
     signal (SIGINT, SIG_DFL);
     display_statistics();
     raise(SIGINT);
@@ -190,7 +192,7 @@ unsigned read_datalog(char const * file) {
             
             datalog::compiler::compile(ctx, ctx.get_rules(), rules_code, termination_code);
             
-            TRACE("dl_compiler", rules_code.display(*ctx.get_rel_context(), tout););
+            TRACE("dl_compiler", rules_code.display(ex_ctx, tout););
             
             rules_code.make_annotations(ex_ctx);
             
@@ -230,7 +232,7 @@ unsigned read_datalog(char const * file) {
         
 
         TRACE("dl_compiler", ctx.display(tout);
-              rules_code.display(*ctx.get_rel_context(), tout););
+              rules_code.display(ex_ctx, tout););
         
         if (ctx.output_tuples()) {
             ctx.get_rel_context()->display_output_facts(ctx.get_rules(), std::cout);

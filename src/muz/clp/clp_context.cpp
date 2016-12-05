@@ -44,7 +44,6 @@ namespace datalog {
         var_subst              m_var_subst;
         expr_ref_vector        m_ground;
         app_ref_vector         m_goals;
-        volatile bool          m_cancel;
         stats                  m_stats;
     public:
         imp(context& ctx):
@@ -54,8 +53,7 @@ namespace datalog {
             m_solver(m, m_fparams),      // TBD: can be replaced by efficient BV solver.
             m_var_subst(m, false),
             m_ground(m),
-            m_goals(m),
-            m_cancel(false)
+            m_goals(m)
         {
             // m_fparams.m_relevancy_lvl = 0;
             m_fparams.m_mbqi = false;
@@ -70,11 +68,11 @@ namespace datalog {
             m_goals.reset();
             rm.mk_query(query, m_ctx.get_rules());
             apply_default_transformation(m_ctx);
-            if (m_ctx.get_rules().get_output_predicates().empty()) {
+            const rule_set& rules = m_ctx.get_rules();
+            if (rules.get_output_predicates().empty()) {
                 return l_false;
             }
-            func_decl* head_decl = m_ctx.get_rules().get_output_predicate();
-            rule_set& rules = m_ctx.get_rules();
+            func_decl *head_decl = rules.get_output_predicate();
             rule_vector const& rv = rules.get_predicate_rules(head_decl);
             if (rv.empty()) {
                 return l_false;
@@ -84,17 +82,7 @@ namespace datalog {
             m_goals.push_back(to_app(head));
             return search(20, 0);
         }
-    
-        void cancel() {
-            m_cancel = true;
-            m_solver.cancel();
-        }
-        
-        void cleanup() {
-            m_cancel = false;
-            m_goals.reset();
-            m_solver.reset_cancel();
-        }
+            
 
         void reset_statistics() {
             m_stats.reset();
@@ -123,14 +111,14 @@ namespace datalog {
         }
         
         void ground(expr_ref& e) {
-            ptr_vector<sort> sorts;
-            get_free_vars(e, sorts);
-            if (m_ground.size() < sorts.size()) {
-                m_ground.resize(sorts.size());
+            expr_free_vars fv;
+            fv(e);
+            if (m_ground.size() < fv.size()) {
+                m_ground.resize(fv.size());
             }
-            for (unsigned i = 0; i < sorts.size(); ++i) {
-                if (sorts[i] && !m_ground[i].get()) {
-                    m_ground[i] = m.mk_fresh_const("c",sorts[i]);
+            for (unsigned i = 0; i < fv.size(); ++i) {
+                if (fv[i] && !m_ground[i].get()) {
+                    m_ground[i] = m.mk_fresh_const("c", fv[i]);
                 }
             }
             m_var_subst(e, m_ground.size(), m_ground.c_ptr(), e);
@@ -223,12 +211,7 @@ namespace datalog {
     lbool clp::query(expr* query) {
         return m_imp->query(query);
     }
-    void clp::cancel() {
-        m_imp->cancel();
-    }
-    void clp::cleanup() {
-        m_imp->cleanup();
-    }
+
     void clp::reset_statistics() {
         m_imp->reset_statistics();
     }

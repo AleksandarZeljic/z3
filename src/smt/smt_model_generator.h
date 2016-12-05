@@ -25,8 +25,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _SMT_MODEL_GENERATOR_H_
-#define _SMT_MODEL_GENERATOR_H_
+#ifndef SMT_MODEL_GENERATOR_H_
+#define SMT_MODEL_GENERATOR_H_
 
 #include"ast.h"
 #include"smt_types.h"
@@ -182,6 +182,7 @@ namespace smt {
         obj_map<enode, app *>         m_root2value;
         ast_ref_vector                m_asts;
         proto_model *                 m_model;
+        obj_hashtable<func_decl>      m_hidden_ufs;
 
         void init_model();
         void mk_bool_model();
@@ -220,9 +221,16 @@ namespace smt {
 
         obj_map<enode, app *> const & get_root2value() const { return m_root2value; }
         app * get_value(enode * n) const;
+
+        void hide(func_decl * f) { 
+            if (!m_hidden_ufs.contains(f)) {
+                m_hidden_ufs.insert(f);
+                m_manager.inc_ref(f); 
+            }
+        }
     };
 };
 
-#endif /* _SMT_MODEL_GENERATOR_H_ */
+#endif /* SMT_MODEL_GENERATOR_H_ */
 
 

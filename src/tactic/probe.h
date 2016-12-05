@@ -8,7 +8,7 @@ Module Name:
 Abstract:
 
     Evaluates/Probes a goal.
-    
+
     A probe is used to build tactics (aka strategies) that
     makes decisions based on the structure of a goal.
 
@@ -21,8 +21,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _PROBE_H_
-#define _PROBE_H_
+#ifndef PROBE_H_
+#define PROBE_H_
 
 #include"goal.h"
 
@@ -49,7 +49,7 @@ public:
 
     void inc_ref() { ++m_ref_count; }
     void dec_ref() { SASSERT(m_ref_count > 0); --m_ref_count; if (m_ref_count == 0) dealloc(this); }
-    
+
     virtual result operator()(goal const & g) = 0;
 };
 
@@ -62,7 +62,7 @@ probe * mk_depth_probe();
 probe * mk_size_probe();
 
 /*
-  ADD_PROBE("memory", "ammount of used memory in megabytes.", "mk_memory_probe()")
+  ADD_PROBE("memory", "amount of used memory in megabytes.", "mk_memory_probe()")
   ADD_PROBE("depth", "depth of the input goal.", "mk_depth_probe()")
   ADD_PROBE("size", "number of assertions in the given goal.", "mk_size_probe()")
 */
@@ -84,12 +84,18 @@ probe * mk_num_bv_consts_probe();
 probe * mk_produce_proofs_probe();
 probe * mk_produce_models_probe();
 probe * mk_produce_unsat_cores_probe();
-probe * mk_has_pattern_probe();
 
 /*
   ADD_PROBE("produce-proofs", "true if proof generation is enabled for the given goal.", "mk_produce_proofs_probe()")
   ADD_PROBE("produce-model", "true if model generation is enabled for the given goal.", "mk_produce_models_probe()")
   ADD_PROBE("produce-unsat-cores", "true if unsat-core generation is enabled for the given goal.", "mk_produce_unsat_cores_probe()")
+*/
+
+probe * mk_has_quantifier_probe();
+probe * mk_has_pattern_probe();
+
+/*
+  ADD_PROBE("has-quantifiers", "true if the goal contains quantifiers.", "mk_has_quantifier_probe()")
   ADD_PROBE("has-patterns", "true if the goal contains quantifiers with patterns.", "mk_has_pattern_probe()")
 */
 
@@ -112,6 +118,7 @@ probe * mk_div(probe * p1, probe * p2);
 probe * mk_is_propositional_probe();
 probe * mk_is_qfbv_probe();
 probe * mk_is_qfaufbv_probe();
+probe * mk_is_qfufbv_probe();
 
 /*
   ADD_PROBE("is-propositional", "true if the goal is in propositional logic.", "mk_is_propositional_probe()")

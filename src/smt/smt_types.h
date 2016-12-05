@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _SMT_TYPES_H_
-#define _SMT_TYPES_H_
+#ifndef SMT_TYPES_H_
+#define SMT_TYPES_H_
 
 #include"list.h"
 #include"vector.h"
@@ -45,6 +45,7 @@ namespace smt {
     class enode;
     typedef ptr_vector<enode> enode_vector;
     typedef std::pair<enode *, enode *> enode_pair;
+    typedef svector<enode_pair> enode_pair_vector;
 
     class context;
 
@@ -74,5 +75,5 @@ namespace smt {
 
 };
 
-#endif /* _SMT_TYPES_H_ */
+#endif /* SMT_TYPES_H_ */
 

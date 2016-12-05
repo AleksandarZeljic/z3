@@ -16,13 +16,17 @@ Author:
 Notes:
 
 --*/
-#ifndef _DEFAULT_TACTIC_
-#define _DEFAULT_TACTIC_
+#ifndef DEFAULT_TACTIC_H_
+#define DEFAULT_TACTIC_H_
 
 #include"params.h"
 class ast_manager;
 class tactic;
 
 tactic * mk_default_tactic(ast_manager & m, params_ref const & p = params_ref());
+
+/*
+ADD_TACTIC("default", "default strategy used when no logic is specified.", "mk_default_tactic(m, p)")
+*/
 
 #endif

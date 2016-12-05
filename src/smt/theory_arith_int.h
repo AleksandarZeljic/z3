@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _THEORY_ARITH_INT_H_
-#define _THEORY_ARITH_INT_H_
+#ifndef THEORY_ARITH_INT_H_
+#define THEORY_ARITH_INT_H_
 
 #include"ast_ll_pp.h"
 #include"arith_simplifier_plugin.h"
@@ -33,11 +33,15 @@ namespace smt {
     // Integrality
     //
     // -----------------------------------
+       
     
     /**
        \brief Move non base variables to one of its bounds.
        If the variable does not have bounds, it is integer, but it is not assigned to an integer value, then the 
        variable is set to an integer value.
+       In mixed integer/real problems moving a real variable to a bound could cause an integer value to 
+       have an infinitesimal. Such an assignment would disable mk_gomory_cut, and Z3 would loop.
+       
     */
     template<typename Ext>
     void theory_arith<Ext>::move_non_base_vars_to_bounds() {
@@ -197,15 +201,16 @@ namespace smt {
         SASSERT(is_int(v));
         SASSERT(!get_value(v).is_int());
         m_stats.m_branches++;
-        TRACE("arith_branching", tout << "branching v" << v << " = " << get_value(v) << "\n";
+        TRACE("arith_int", tout << "branching v" << v << " = " << get_value(v) << "\n";
               display_var(tout, v););
         numeral k     = ceil(get_value(v));
         rational _k   = k.to_rational();
-        expr * bound  = m_util.mk_ge(get_enode(v)->get_owner(), m_util.mk_numeral(_k, true));
-        TRACE("arith_branching", tout << mk_bounded_pp(bound, get_manager()) << "\n";);
+        expr_ref bound(get_manager());
+        bound  = m_util.mk_ge(get_enode(v)->get_owner(), m_util.mk_numeral(_k, true));
+        TRACE("arith_int", tout << mk_bounded_pp(bound, get_manager()) << "\n";);
         context & ctx = get_context();
         ctx.internalize(bound, true);
-        ctx.mark_as_relevant(bound);
+        ctx.mark_as_relevant(bound.get());
     }
 
     
@@ -413,10 +418,10 @@ namespace smt {
         for (; it != end; ++it) {
             // All non base variables must be at their bounds and assigned to rationals (that is, infinitesimals are not allowed).
             if (!it->is_dead() && it->m_var != b && (!at_bound(it->m_var) || !get_value(it->m_var).is_rational())) {
-                TRACE("gomory_cut", tout << "row is gomory cut target:\n";
+                TRACE("gomory_cut", tout << "row is not gomory cut target:\n";
                       display_var(tout, it->m_var);
                       tout << "at_bound:      " << at_bound(it->m_var) << "\n";
-                      tout << "infinitesimal: " << get_value(it->m_var).is_rational() << "\n";);
+                      tout << "infinitesimal: " << !get_value(it->m_var).is_rational() << "\n";);
                 return false;
             }
         }
@@ -448,21 +453,24 @@ namespace smt {
         expr_ref pol(m);
         pol = m_util.mk_add(_args.size(), _args.c_ptr());
         result = m_util.mk_ge(pol, m_util.mk_numeral(k, all_int));
-        TRACE("arith_mk_polynomial", tout << "before simplification:\n" << mk_pp(pol, m) << "\n";);
+        TRACE("arith_mk_polynomial", tout << "before simplification:\n" << result << "\n";);
         simplifier & s = get_context().get_simplifier();
         proof_ref pr(m);
         s(result, result, pr);
-        TRACE("arith_mk_polynomial", tout << "after simplification:\n" << mk_pp(pol, m) << "\n";);
+        TRACE("arith_mk_polynomial", tout << "after simplification:\n" << result << "\n";);
         SASSERT(is_well_sorted(get_manager(), result));
     }
 
-    class gomory_cut_justification : public ext_theory_propagation_justification {
+    template<typename Ext>
+    class theory_arith<Ext>::gomory_cut_justification : public ext_theory_propagation_justification {
     public:
-        gomory_cut_justification(family_id fid, region & r, 
+         gomory_cut_justification(family_id fid, region & r, 
                                  unsigned num_lits, literal const * lits, 
                                  unsigned num_eqs, enode_pair const * eqs,
+                                 antecedents& bounds, 
                                  literal consequent):
-            ext_theory_propagation_justification(fid, r, num_lits, lits, num_eqs, eqs, consequent) {
+        ext_theory_propagation_justification(fid, r, num_lits, lits, num_eqs, eqs, consequent,
+                                             bounds.num_params(), bounds.params("gomory-cut")) {
         }
         // Remark: the assignment must be propagated back to arith
         virtual theory_id get_from_theory() const { return null_theory_id; } 
@@ -473,7 +481,8 @@ namespace smt {
     */
     template<typename Ext>
     bool theory_arith<Ext>::mk_gomory_cut(row const & r) {
-        SASSERT(!all_coeff_int(r));
+        // The following assertion is wrong. It may be violated in mixed-integer problems.
+        // SASSERT(!all_coeff_int(r));
         theory_var x_i = r.get_base_var();
         
         SASSERT(is_int(x_i));
@@ -490,7 +499,7 @@ namespace smt {
 
         TRACE("gomory_cut", tout << "applying cut at:\n"; display_row_info(tout, r););
         
-        antecedents& ante = get_antecedents();
+        antecedents ante(*this);
 
         m_stats.m_gomory_cuts++;
 
@@ -500,6 +509,8 @@ namespace smt {
         
         numeral f_0  = Ext::fractional_part(m_value[x_i]);
         numeral one_minus_f_0 = numeral(1) - f_0; 
+        SASSERT(!f_0.is_zero());
+        SASSERT(!one_minus_f_0.is_zero());
         
         numeral lcm_den(1);
         unsigned num_ints = 0;
@@ -513,36 +524,30 @@ namespace smt {
                 a_ij.neg();  // make the used format compatible with the format used in: Integrating Simplex with DPLL(T)
                 if (is_real(x_j)) {
                     numeral new_a_ij;
-                    TRACE("gomory_cut_detail", tout << a_ij << "*v" << x_j << "\n";);
                     if (at_lower(x_j)) {
                         if (a_ij.is_pos()) {
                             new_a_ij  =  a_ij / one_minus_f_0;
                         }
                         else {
-                            TRUSTME(!f_0.is_zero());
                             new_a_ij  =  a_ij / f_0;
                             new_a_ij.neg();
                         }
-                        // k += new_a_ij * lower_bound(x_j).get_rational();
                         k.addmul(new_a_ij, lower_bound(x_j).get_rational());
-                        lower(x_j)->push_justification(ante, numeral::zero(), proofs_enabled());
+                        lower(x_j)->push_justification(ante, new_a_ij, coeffs_enabled());
                     }
                     else {
                         SASSERT(at_upper(x_j));
                         if (a_ij.is_pos()) {
-                            TRUSTME(!f_0.is_zero());
                             new_a_ij =   a_ij / f_0; 
                             new_a_ij.neg(); // the upper terms are inverted.
                         }
                         else {
-                            // new_a_ij = - a_ij / one_minus_f_0
-                            // new_a_ij.neg() // the upper terms are inverted
-                            new_a_ij =   a_ij / one_minus_f_0;  
+                            new_a_ij =   a_ij / one_minus_f_0; 
                         }
-                        // k += new_a_ij * upper_bound(x_j).get_rational();
                         k.addmul(new_a_ij, upper_bound(x_j).get_rational());
-                        upper(x_j)->push_justification(ante, numeral::zero(), proofs_enabled());
+                        upper(x_j)->push_justification(ante, new_a_ij, coeffs_enabled());
                     }
+                    TRACE("gomory_cut_detail", tout << a_ij << "*v" << x_j << " k: " << k << "\n";);
                     pol.push_back(row_entry(new_a_ij, x_j));
                 }
                 else {
@@ -564,9 +569,8 @@ namespace smt {
                             else {
                                 new_a_ij = (numeral(1) - f_j) / f_0;
                             }
-                            // k += new_a_ij * lower_bound(x_j).get_rational();
                             k.addmul(new_a_ij, lower_bound(x_j).get_rational());
-                            lower(x_j)->push_justification(ante, numeral::zero(), proofs_enabled());
+                            lower(x_j)->push_justification(ante, new_a_ij, coeffs_enabled());
                         }
                         else {
                             SASSERT(at_upper(x_j));
@@ -577,11 +581,10 @@ namespace smt {
                                 new_a_ij = (numeral(1) - f_j) / one_minus_f_0;
                             }
                             new_a_ij.neg(); // the upper terms are inverted
-                            // k += new_a_ij * upper_bound(x_j).get_rational();
                             k.addmul(new_a_ij, upper_bound(x_j).get_rational());
-                            upper(x_j)->push_justification(ante, numeral::zero(), proofs_enabled());
+                            upper(x_j)->push_justification(ante, new_a_ij, coeffs_enabled());
                         }
-                        TRACE("gomory_cut_detail", tout << "new_a_ij: " << new_a_ij << "\n";);
+                        TRACE("gomory_cut_detail", tout << "new_a_ij: " << new_a_ij << " k: " << k << "\n";);
                         pol.push_back(row_entry(new_a_ij, x_j));
                         lcm_den = lcm(lcm_den, denominator(new_a_ij));
                     }
@@ -595,7 +598,7 @@ namespace smt {
         if (pol.empty()) {
             SASSERT(k.is_pos());
             // conflict 0 >= k where k is positive
-            set_conflict(ante.lits().size(), ante.lits().c_ptr(), ante.eqs().size(), ante.eqs().c_ptr(), ante, true, "gomory_cut");
+            set_conflict(ante, ante, "gomory-cut");
             return true;
         }
         else if (pol.size() == 1) {
@@ -631,23 +634,24 @@ namespace smt {
                 }
                 TRACE("gomory_cut_detail", tout << "after *lcm\n";
                       for (unsigned i = 0; i < pol.size(); i++) {
-                          tout << pol[i].m_coeff << " " << pol[i].m_var << "\n";
+                          tout << pol[i].m_coeff << " * v" << pol[i].m_var << "\n";
                       }
                       tout << "k: " << k << "\n";);
             }
             mk_polynomial_ge(pol.size(), pol.c_ptr(), k.to_rational(), bound);            
         }
-        TRACE("gomory_cut", tout << "new cut:\n" << mk_pp(bound, get_manager()) << "\n";);
+        TRACE("gomory_cut", tout << "new cut:\n" << bound << "\n"; ante.display(tout););
         literal l     = null_literal;
         context & ctx = get_context();
         ctx.internalize(bound, true);
         l = ctx.get_literal(bound);
         ctx.mark_as_relevant(l);
+        dump_lemmas(l, ante);
         ctx.assign(l, ctx.mk_justification(
                        gomory_cut_justification(
                            get_id(), ctx.get_region(), 
                            ante.lits().size(), ante.lits().c_ptr(), 
-                           ante.eqs().size(), ante.eqs().c_ptr(), l)));
+                           ante.eqs().size(), ante.eqs().c_ptr(), ante, l)));
         return true;
     }
     
@@ -713,7 +717,7 @@ namespace smt {
 
         if (!(consts / gcds).is_int()) {
             TRACE("gcd_test", tout << "row failed the GCD test:\n"; display_row_info(tout, r););
-            antecedents& ante = get_antecedents();
+            antecedents ante(*this);
             collect_fixed_var_justifications(r, ante);
             context & ctx         = get_context();
             ctx.set_conflict(
@@ -746,7 +750,7 @@ namespace smt {
         numeral l(consts);
         numeral u(consts);
 
-        antecedents& ante = get_antecedents();
+        antecedents ante(*this);
 
 
         typename vector<row_entry>::const_iterator it  = r.begin_entries();
@@ -772,8 +776,8 @@ namespace smt {
                         // u += ncoeff * lower_bound(v).get_rational();
                         u.addmul(ncoeff, lower_bound(v).get_rational());
                     }
-                    lower(v)->push_justification(ante, numeral::zero(), proofs_enabled());
-                    upper(v)->push_justification(ante, numeral::zero(), proofs_enabled());
+                    lower(v)->push_justification(ante, it->m_coeff, coeffs_enabled());
+                    upper(v)->push_justification(ante, it->m_coeff, coeffs_enabled());
                 }
                 else if (gcds.is_zero()) {
                     gcds = abs_ncoeff; 
@@ -1036,8 +1040,8 @@ namespace smt {
                     num_args = 1;
                     args     = &n;
                 }
-                for (unsigned j = 0; j < num_args; j++) {
-                    expr * arg = args[j];
+                for (unsigned i = 0; i < num_args; i++) {
+                    expr * arg = args[i];
                     expr * pp;
                     rational a_val;
                     get_monomial(arg, a_val, pp);
@@ -1056,6 +1060,7 @@ namespace smt {
                 }
                 if (!failed) {
                     m_solver.assert_eq(as.size(), as.c_ptr(), xs.c_ptr(), c, j);
+                    TRACE("euclidean_solver", tout << "add definition: v" << v << " := " << mk_ismt2_pp(n, t.get_manager()) << "\n";);
                 }
                 else {
                     TRACE("euclidean_solver", tout << "failed for:\n" << mk_ismt2_pp(n, t.get_manager()) << "\n";);
@@ -1186,7 +1191,8 @@ namespace smt {
                 if (l != 0) {
                     rational l_old = l->get_value().get_rational().to_rational();
                     rational l_new = g*ceil((l_old - c2)/g) + c2;
-                    TRACE("euclidean_solver_new", tout << "new lower: " << l_new << " old: " << l_old << "\n";);
+                    TRACE("euclidean_solver_new", tout << "new lower: " << l_new << " old: " << l_old << "\n";
+                          tout << "c: " << c2 << " ceil((l_old - c2)/g): " << (ceil((l_old - c2)/g)) << "\n";);
                     if (l_new > l_old) {
                         propagated = true;
                         mk_lower(v, l_new, l, m_js);
@@ -1261,11 +1267,11 @@ namespace smt {
     final_check_status theory_arith<Ext>::check_int_feasibility() {
         TRACE("arith_int_detail", get_context().display(tout););
         if (!has_infeasible_int_var()) {
-            TRACE("arith_int_incomp", tout << "FC_DONE 1...\n"; display(tout););
+            TRACE("arith", tout << "FC_DONE 1...\n"; display(tout););
             return FC_DONE;
         }
 
-        TRACE("arith_int_fracs",
+        TRACE("arith",
               int num = get_num_vars();
               for (theory_var v = 0; v < num; v++) {
                   if (is_int(v) && !get_value(v).is_int()) {
@@ -1379,6 +1385,7 @@ namespace smt {
         m_branch_cut_counter++;
         // TODO: add giveup code
         if (m_branch_cut_counter % m_params.m_arith_branch_cut_ratio == 0) {
+            TRACE("opt_verbose", display(tout););
             move_non_base_vars_to_bounds();
             if (!make_feasible()) {
                 TRACE("arith_int", tout << "failed to move variables to bounds.\n";);
@@ -1390,7 +1397,9 @@ namespace smt {
                 TRACE("arith_int", tout << "v" << int_var << " does not have an integer assignment: " << get_value(int_var) << "\n";);
                 SASSERT(is_base(int_var));
                 row const & r = m_rows[get_var_row(int_var)];
-                mk_gomory_cut(r);
+                if (!mk_gomory_cut(r)) {
+                    // silent failure
+                }
                 return FC_CONTINUE;
             }
         }
@@ -1400,7 +1409,7 @@ namespace smt {
             }
             theory_var int_var = find_infeasible_int_base_var();
             if (int_var != null_theory_var) {
-                TRACE("arith_int", tout << "v" << int_var << " does not have and integer assignment: " << get_value(int_var) << "\n";);
+                TRACE("arith_int", tout << "v" << int_var << " does not have an integer assignment: " << get_value(int_var) << "\n";);
                 // apply branching 
                 branch_infeasible_int_var(int_var);
                 return FC_CONTINUE;
@@ -1411,5 +1420,5 @@ namespace smt {
 
 };
 
-#endif /* _THEORY_ARITH_INT_H_ */
+#endif /* THEORY_ARITH_INT_H_ */
 

@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _OBJ_PAIR_SET_H_
-#define _OBJ_PAIR_SET_H_
+#ifndef OBJ_PAIR_SET_H_
+#define OBJ_PAIR_SET_H_
 
 #include"chashtable.h"
 
@@ -45,6 +45,7 @@ public:
     bool contains(T1 * t1, T2 * t2) const { return m_set.contains(obj_pair(t1, t2)); }
     bool contains(obj_pair const & p) const { return m_set.contains(p); }
     void reset() { m_set.reset(); }
+    bool empty() const { return m_set.empty(); }
 };
 
 #endif

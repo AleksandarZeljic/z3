@@ -32,19 +32,12 @@ class aig_tactic : public tactic {
 
         mk_aig_manager(aig_tactic & o, ast_manager & m):m_owner(o) {
             aig_manager * mng = alloc(aig_manager, m, o.m_max_memory, o.m_aig_gate_encoding);
-            #pragma omp critical (aig_tactic)
-            {
-                m_owner.m_aig_manager = mng;
-            }
+            m_owner.m_aig_manager = mng;            
         }
         
         ~mk_aig_manager() {
-            aig_manager * mng = m_owner.m_aig_manager;
-            #pragma omp critical (aig_tactic)
-            {
-                m_owner.m_aig_manager = 0;
-            }
-            dealloc(mng);
+            dealloc(m_owner.m_aig_manager);
+            m_owner.m_aig_manager = 0;
         }
     };
 
@@ -78,13 +71,13 @@ public:
 
         mk_aig_manager mk(*this, g->m());
         if (m_aig_per_assertion) {
-            unsigned size = g->size();
-            for (unsigned i = 0; i < size; i++) {
+            for (unsigned i = 0; i < g->size(); i++) {
                 aig_ref r = m_aig_manager->mk_aig(g->form(i));
                 m_aig_manager->max_sharing(r);
                 expr_ref new_f(g->m());
                 m_aig_manager->to_formula(r, new_f);
-                g->update(i, new_f, 0, g->dep(i));
+                expr_dependency * ed = g->dep(i);
+                g->update(i, new_f, 0, ed);
             }
         }
         else {
@@ -111,14 +104,6 @@ public:
 
     virtual void cleanup() {}
 
-protected:
-    virtual void set_cancel(bool f) {
-        #pragma omp critical (aig_tactic)
-        {
-            if (m_aig_manager)
-                m_aig_manager->set_cancel(f);
-        }
-    }
 };
 
 tactic * mk_aig_tactic(params_ref const & p) {

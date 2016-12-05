@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _HWF_H_
-#define _HWF_H_
+#ifndef HWF_H_
+#define HWF_H_
 
 #include<string>
 #include"mpz.h"
@@ -105,7 +105,7 @@ public:
     void mul(mpf_rounding_mode rm, hwf const & x, hwf const & y, hwf & o);
     void div(mpf_rounding_mode rm, hwf const & x, hwf const & y, hwf & o);    
 
-    void fused_mul_add(mpf_rounding_mode rm, hwf const & x, hwf const & y, hwf const &z, hwf & o);
+    void fma(mpf_rounding_mode rm, hwf const & x, hwf const & y, hwf const &z, hwf & o);
 
     void sqrt(mpf_rounding_mode rm, hwf const & x, hwf & o);
 
@@ -127,15 +127,15 @@ public:
     void to_rational(hwf const & x, scoped_mpq & o) { to_rational(x, o.m(), o); }
     
     
-    bool sgn(hwf const & x) const { 
+    bool sgn(hwf const & x) const {
         return (x.get_raw() & 0x8000000000000000ull) != 0; 
     }
 
-    const uint64 sig(hwf const & x) const { 
+    uint64 sig(hwf const & x) const {
         return x.get_raw() & 0x000FFFFFFFFFFFFFull;
     }
 
-    const int exp(hwf const & x) const {         
+    int exp(hwf const & x) const {
         return ((x.get_raw() & 0x7FF0000000000000ull) >> 52) - 1023;
     }
 

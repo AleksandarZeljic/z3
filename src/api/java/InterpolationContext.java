@@ -17,10 +17,9 @@ Notes:
 
 package com.microsoft.z3;
 
-import java.util.Map;
-import java.lang.String;
-
 import com.microsoft.z3.enumerations.Z3_lbool;
+
+import java.util.Map;
 
 /** 
  *  The InterpolationContext is suitable for generation of interpolants.
@@ -33,10 +32,13 @@ public class InterpolationContext extends Context
     /**
      * Constructor.
      **/
-    public InterpolationContext()
+    public static InterpolationContext mkContext()
     {
-        m_ctx = Native.mkInterpolationContext(0);
-        initContext(); 
+        long m_ctx;
+        synchronized(creation_lock) {
+            m_ctx = Native.mkInterpolationContext(0);
+        }
+        return new InterpolationContext(m_ctx);
     }
 
     /** 
@@ -46,14 +48,21 @@ public class InterpolationContext extends Context
      * Remarks: 
      * @see Context#Context
      **/
-    public InterpolationContext(Map<String, String> settings)
+    public static InterpolationContext mkContext(Map<String, String> settings)
     { 
-        long cfg = Native.mkConfig();
-        for (Map.Entry<String, String> kv : settings.entrySet())
-            Native.setParamValue(cfg, kv.getKey(), kv.getValue());
-        m_ctx = Native.mkInterpolationContext(cfg);
-        Native.delConfig(cfg);
-        initContext();
+        long m_ctx;
+        synchronized(creation_lock) {
+            long cfg = Native.mkConfig();
+            for (Map.Entry<String, String> kv : settings.entrySet())
+                Native.setParamValue(cfg, kv.getKey(), kv.getValue());
+            m_ctx = Native.mkInterpolationContext(cfg);
+            Native.delConfig(cfg);
+        }
+        return new InterpolationContext(m_ctx);
+    }
+
+    private InterpolationContext(long m_ctx) {
+        super(m_ctx);
     }
 
     /** 
@@ -73,20 +82,23 @@ public class InterpolationContext extends Context
      * well documented.
      * @throws Z3Exception 
      **/
-    public Expr[] GetInterpolant(Expr pf, Expr pat, Params p)
+    public BoolExpr[] GetInterpolant(Expr pf, Expr pat, Params p)
     {
         checkContextMatch(pf);
         checkContextMatch(pat);
         checkContextMatch(p);
 
         ASTVector seq = new ASTVector(this, Native.getInterpolant(nCtx(), pf.getNativeObject(), pat.getNativeObject(), p.getNativeObject()));
-        int n = seq.size();
-        Expr[] res = new Expr[n];
-        for (int i = 0; i < n; i++)
-            res[i] = Expr.create(this, seq.get(i).getNativeObject());
-        return res;
+        return seq.ToBoolExprArray();
     }
 
+    public class ComputeInterpolantResult 
+    {
+        public Z3_lbool status = Z3_lbool.Z3_L_UNDEF;
+        public BoolExpr[] interp = null;
+        public Model model = null;
+    };
+    
     /**
      * Computes an interpolant.   
      * Remarks: For more information on interpolation please refer
@@ -94,17 +106,20 @@ public class InterpolationContext extends Context
      * well documented.
      * @throws Z3Exception 
      **/
-    public Z3_lbool ComputeInterpolant(Expr pat, Params p, ASTVector interp, Model model)
+    public ComputeInterpolantResult ComputeInterpolant(Expr pat, Params p)
     {
         checkContextMatch(pat);
         checkContextMatch(p);
 
+        ComputeInterpolantResult res = new ComputeInterpolantResult();
         Native.LongPtr n_i = new Native.LongPtr();
         Native.LongPtr n_m = new Native.LongPtr();
-        int r = Native.computeInterpolant(nCtx(), pat.getNativeObject(), p.getNativeObject(), n_i, n_m);
-        interp = new ASTVector(this, n_i.value);
-        model = new Model(this, n_m.value);
-        return Z3_lbool.fromInt(r);
+        res.status = Z3_lbool.fromInt(Native.computeInterpolant(nCtx(), pat.getNativeObject(), p.getNativeObject(), n_i, n_m));        
+        if (res.status == Z3_lbool.Z3_L_FALSE)
+            res.interp = (new ASTVector(this, n_i.value)).ToBoolExprArray();
+        if (res.status == Z3_lbool.Z3_L_TRUE) 
+            res.model = new Model(this, n_m.value);
+        return res;
     }
 
     ///  
@@ -118,16 +133,23 @@ public class InterpolationContext extends Context
         return Native.interpolationProfile(nCtx());
     }
 
+    public class CheckInterpolantResult
+    {
+        public int return_value = 0;
+        public String error = null;
+    }
+    
     ///  
     /// Checks the correctness of an interpolant.
     ///    
     /// Remarks: For more information on interpolation please refer
     /// too the function Z3_check_interpolant in the C/C++ API, which is 
     /// well documented.
-    public int CheckInterpolant(Expr[] cnsts, int[] parents, Expr[] interps, String error, Expr[] theory)
+    public CheckInterpolantResult CheckInterpolant(Expr[] cnsts, int[] parents, BoolExpr[] interps, String error, Expr[] theory)
     {
+        CheckInterpolantResult res = new CheckInterpolantResult();
         Native.StringPtr n_err_str = new Native.StringPtr();
-        int r = Native.checkInterpolant(nCtx(),
+        res.return_value = Native.checkInterpolant(nCtx(),
                                         cnsts.length,
                                         Expr.arrayToNative(cnsts),
                                         parents,
@@ -135,41 +157,52 @@ public class InterpolationContext extends Context
                                         n_err_str,
                                         theory.length,
                                         Expr.arrayToNative(theory));
-        error = n_err_str.value;
-        return r;
+        res.error = n_err_str.value;
+        return res;
     }
 
+    public class ReadInterpolationProblemResult 
+    {
+        public int return_value = 0;
+        public Expr[] cnsts;
+        public int[] parents;
+        public String error;
+        public Expr[] theory;
+    };
+    
     ///  
     /// Reads an interpolation problem from a file.
     ///    
     /// Remarks: For more information on interpolation please refer
     /// too the function Z3_read_interpolation_problem in the C/C++ API, which is 
     /// well documented.
-    public int ReadInterpolationProblem(String filename, Expr[] cnsts, int[] parents, String error, Expr[] theory)
+    public ReadInterpolationProblemResult ReadInterpolationProblem(String filename, Expr[] cnsts, int[] parents, String error, Expr[] theory)
     {
+        ReadInterpolationProblemResult res = new ReadInterpolationProblemResult();
+        
         Native.IntPtr n_num = new Native.IntPtr();
         Native.IntPtr n_num_theory = new Native.IntPtr();
         Native.ObjArrayPtr n_cnsts = new Native.ObjArrayPtr();
         Native.UIntArrayPtr n_parents = new Native.UIntArrayPtr();
         Native.ObjArrayPtr n_theory = new Native.ObjArrayPtr();
         Native.StringPtr n_err_str = new Native.StringPtr();
-        int r = Native.readInterpolationProblem(nCtx(), n_num, n_cnsts, n_parents, filename, n_err_str, n_num_theory, n_theory);
+        res.return_value = Native.readInterpolationProblem(nCtx(), n_num, n_cnsts, n_parents, filename, n_err_str, n_num_theory, n_theory);
         int num = n_num.value;
         int num_theory = n_num_theory.value;
-        error = n_err_str.value;
-        cnsts = new Expr[num];
-        parents = new int[num];
+        res.error = n_err_str.value;
+        res.cnsts = new Expr[num];
+        res.parents = new int[num];
         theory = new Expr[num_theory];
         for (int i = 0; i < num; i++)
         {
-            cnsts[i] = Expr.create(this, n_cnsts.value[i]);
-            parents[i] = n_parents.value[i];
+            res.cnsts[i] = Expr.create(this, n_cnsts.value[i]);
+            res.parents[i] = n_parents.value[i];
         }
         for (int i = 0; i < num_theory; i++)
-            theory[i] = Expr.create(this, n_theory.value[i]);
-        return r;
+            res.theory[i] = Expr.create(this, n_theory.value[i]);
+        return res;
     }
-
+    
     ///  
     /// Writes an interpolation problem to a file.
     ///    

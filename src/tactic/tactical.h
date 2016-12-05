@@ -16,8 +16,8 @@ Author:
 Notes:
 
 --*/
-#ifndef _TACTICAL_H_
-#define _TACTICAL_H_
+#ifndef TACTICAL_H_
+#define TACTICAL_H_
 
 #include"tactic.h"
 #include"probe.h"
@@ -32,6 +32,7 @@ tactic * and_then(tactic * t1, tactic * t2, tactic * t3, tactic * t4, tactic * t
 tactic * and_then(tactic * t1, tactic * t2, tactic * t3, tactic * t4, tactic * t5, tactic * t6, tactic * t7, tactic * t8);
 tactic * and_then(tactic * t1, tactic * t2, tactic * t3, tactic * t4, tactic * t5, tactic * t6, tactic * t7, tactic * t8, tactic * t9);
 tactic * and_then(tactic * t1, tactic * t2, tactic * t3, tactic * t4, tactic * t5, tactic * t6, tactic * t7, tactic * t8, tactic * t9, tactic * t10);
+tactic * and_then(tactic * t1, tactic * t2, tactic * t3, tactic * t4, tactic * t5, tactic * t6, tactic * t7, tactic * t8, tactic * t9, tactic * t10, tactic * t11);
 
 tactic * or_else(unsigned num, tactic * const * ts);
 tactic * or_else(tactic * t1, tactic * t2);
@@ -47,7 +48,7 @@ tactic * or_else(tactic * t1, tactic * t2, tactic * t3, tactic * t4, tactic * t5
 tactic * repeat(tactic * t, unsigned max = UINT_MAX); 
 /**
    \brief Fails if \c t produeces more than \c threshold subgoals.
-   Otherwise, it behabes like \c t.
+   Otherwise, it behaves like \c t.
 */
 tactic * fail_if_branching(tactic * t, unsigned threshold = 1);
 
@@ -62,6 +63,7 @@ tactic * par_and_then(tactic * t1, tactic * t2);
 tactic * try_for(tactic * t, unsigned msecs);
 tactic * clean(tactic * t);
 tactic * using_params(tactic * t, params_ref const & p);
+tactic * annotate_tactic(char const* name, tactic * t);
 
 // Create a tactic that fails if the result returned by probe p is true.
 tactic * fail_if(probe * p);

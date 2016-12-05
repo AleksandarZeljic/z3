@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _OBJ_HASHTABLE_H_
-#define _OBJ_HASHTABLE_H_
+#ifndef OBJ_HASHTABLE_H_
+#define OBJ_HASHTABLE_H_
 
 #include"hash.h"
 #include"hashtable.h"
@@ -51,6 +51,7 @@ class obj_hashtable : public core_hashtable<obj_hash_entry<T>, obj_ptr_hash<T>, 
 public:
     obj_hashtable(unsigned initial_capacity = DEFAULT_HASHTABLE_INITIAL_CAPACITY):
         core_hashtable<obj_hash_entry<T>, obj_ptr_hash<T>, ptr_eq<T> >(initial_capacity) {}
+
 };
 
 template<typename Key, typename Value>
@@ -223,5 +224,5 @@ void erase_dealloc_value(obj_map<Key, Value*> & m, Key * k) {
     }
 }
 
-#endif /* _OBJ_HASHTABLE_H_ */
+#endif /* OBJ_HASHTABLE_H_ */
 

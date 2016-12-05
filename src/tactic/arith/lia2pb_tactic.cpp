@@ -60,9 +60,6 @@ class lia2pb_tactic : public tactic {
             updt_params_core(p);
         }
         
-        void set_cancel(bool f) {
-            m_rw.set_cancel(f);
-        }
         
         bool is_target_core(expr * n, rational & u) {
             if (!is_uninterp_const(n))
@@ -275,8 +272,9 @@ class lia2pb_tactic : public tactic {
                     }
                     TRACE("lia2pb", tout << mk_ismt2_pp(x, m) << " -> " << dep << "\n";);
                     subst.insert(x, def, 0, dep);
-                    if (m_produce_models)
+                    if (m_produce_models) {
                         mc1->insert(to_app(x)->get_decl(), def);
+                    }
                 }
             }
             
@@ -293,9 +291,12 @@ class lia2pb_tactic : public tactic {
                 m_rw(curr, new_curr, new_pr);
                 if (m_produce_unsat_cores) {
                     dep = m.mk_join(m_rw.get_used_dependencies(), g->dep(idx));
-                    m_rw.reset_used_dependencies();
+                    m_rw.reset_used_dependencies();                    
                 }
-                g->update(idx, new_curr, 0, dep);
+                if (m.proofs_enabled()) {
+                    new_pr  = m.mk_modus_ponens(g->pr(idx), new_pr);
+                }
+                g->update(idx, new_curr, new_pr, dep);
             }
             g->inc_depth();
             result.push_back(g.get());
@@ -346,18 +347,10 @@ public:
     
     virtual void cleanup() {
         imp * d = alloc(imp, m_imp->m, m_params);
-        #pragma omp critical (tactic_cancel)
-        {
-            std::swap(d, m_imp);
-        }
+        std::swap(d, m_imp);        
         dealloc(d);
     }
 
-protected:
-    virtual void set_cancel(bool f) {
-        if (m_imp)
-            m_imp->set_cancel(f);
-    }
 };
 
 tactic * mk_lia2pb_tactic(ast_manager & m, params_ref const & p) {

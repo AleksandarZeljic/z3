@@ -200,14 +200,14 @@ typedef default_exception nnf_exception;
 struct nnf::imp {
 
     struct frame {
-        expr *    m_curr;
+        expr_ref  m_curr;
         unsigned  m_i:28;
         unsigned  m_pol:1;  // pos/neg polarity
         unsigned  m_in_q:1; // true if m_curr is nested in a quantifier
         unsigned  m_new_child:1; 
         unsigned  m_cache_result:1;
         unsigned  m_spos;   // top of the result stack, when the frame was created.
-        frame(expr * n, bool pol, bool in_q, bool cache_res, unsigned spos):
+        frame(expr_ref& n, bool pol, bool in_q, bool cache_res, unsigned spos):
             m_curr(n),
             m_i(0),
             m_pol(pol),
@@ -225,7 +225,7 @@ struct nnf::imp {
 #define POS_Q_CIDX  3   // positive polarity and nested in a quantifier
     
     ast_manager &          m_manager;
-    svector<frame>         m_frame_stack;
+    vector<frame>          m_frame_stack;
     expr_ref_vector        m_result_stack;
     
     typedef act_cache      cache;
@@ -250,7 +250,6 @@ struct nnf::imp {
     name_exprs *           m_name_nested_formulas;
     name_exprs *           m_name_quant;
     
-    volatile bool          m_cancel;
     unsigned long long     m_max_memory; // in bytes
 
     imp(ast_manager & m, defined_names & n, params_ref const & p):
@@ -259,8 +258,7 @@ struct nnf::imp {
         m_todo_defs(m),
         m_todo_proofs(m),
         m_result_pr_stack(m),
-        m_skolemizer(m),
-        m_cancel(false) {
+        m_skolemizer(m) {
         updt_params(p);
         for (unsigned i = 0; i < 4; i++) {
             m_cache[i] = alloc(act_cache, m);
@@ -326,7 +324,8 @@ struct nnf::imp {
     }
 
     void push_frame(expr * t, bool pol, bool in_q, bool cache_res) {
-        m_frame_stack.push_back(frame(t, pol, in_q, cache_res, m_result_stack.size()));
+        expr_ref tr(t, m());
+        m_frame_stack.push_back(frame(tr, pol, in_q, cache_res, m_result_stack.size()));
     }
 
     static unsigned get_cache_idx(bool pol, bool in_q) { 
@@ -369,16 +368,13 @@ struct nnf::imp {
         return false;
     }
 
-    void set_cancel(bool f) {
-        m_cancel = f;
-    }
     
     void checkpoint() {
         cooperate("nnf");
         if (memory::get_allocation_size() > m_max_memory)
             throw nnf_exception(Z3_MAX_MEMORY_MSG);
-        if (m_cancel)
-            throw nnf_exception(Z3_CANCELED_MSG);
+        if (m().canceled()) 
+            throw nnf_exception(m().limit().get_cancel_msg());
     }
 
     void set_new_child_flag() {
@@ -708,6 +704,7 @@ struct nnf::imp {
     }
 
     bool process_app(app * t, frame & fr) {
+        TRACE("nnf", tout << mk_ismt2_pp(t, m()) << "\n";);
         SASSERT(m().is_bool(t));
         if (t->get_family_id() == m().get_basic_family_id()) {
             switch (static_cast<basic_op_kind>(t->get_decl_kind())) {
@@ -915,9 +912,6 @@ void nnf::get_param_descrs(param_descrs & r) {
     imp::get_param_descrs(r);
 }
 
-void nnf::set_cancel(bool f) {
-    m_imp->set_cancel(f);
-}
 
 void nnf::reset() {
     m_imp->reset();

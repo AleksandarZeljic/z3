@@ -21,8 +21,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _VECTOR_H_
-#define _VECTOR_H_
+#ifndef VECTOR_H_
+#define VECTOR_H_
 
 #include"debug.h"
 #include<algorithm>
@@ -430,6 +430,7 @@ public:
 typedef svector<int> int_vector;
 typedef svector<unsigned> unsigned_vector;
 typedef svector<char> char_vector;
+typedef svector<signed char> signed_char_vector;
 typedef svector<double> double_vector;
 
 template<typename Hash, typename Vec>
@@ -456,5 +457,15 @@ template<typename Hash>
 struct svector_hash : public vector_hash_tpl<Hash, svector<typename Hash::data> > {};
 
 
-#endif /* _VECTOR_H_ */
+// Specialize vector<std::string> to be inaccessible.
+// This will catch any regression of issue #564 and #420.
+// Use std::vector<std::string> instead.
+template <>
+class vector<std::string, true, unsigned> {
+private:
+    vector<std::string, true, unsigned>();
+};
+
+
+#endif /* VECTOR_H_ */
 

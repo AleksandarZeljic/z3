@@ -17,11 +17,10 @@ Notes:
 
 --*/
 
-#ifndef _SLS_TRACKER_H_
-#define _SLS_TRACKER_H_
+#ifndef SLS_TRACKER_H_
+#define SLS_TRACKER_H_
 
 #include<math.h>
-
 #include"for_each_expr.h"
 #include"ast_smt2_pp.h"
 #include"bv_decl_plugin.h"
@@ -162,6 +161,19 @@ public:
 
     inline double get_top_sum() {
         return m_top_sum;
+    }
+
+    inline obj_hashtable<expr> const & get_top_exprs() {
+        return m_top_expr;
+    }
+
+    inline bool is_sat() {
+        for (obj_hashtable<expr>::iterator it = m_top_expr.begin();
+             it != m_top_expr.end();
+             it++)
+            if (!m_mpz_manager.is_one(get_value(*it)))
+                return false;
+        return true;
     }
 
     inline void set_value(expr * n, const mpz & r) {
@@ -452,7 +464,7 @@ public:
             if (!m_weights.contains(e))
         		m_weights.insert(e, m_paws_init);
 
-            // positive/negative occurences used for early pruning
+            // positive/negative occurrences used for early pruning
             setup_occs(as[i]);
         }
 
@@ -512,6 +524,28 @@ public:
         for (unsigned i = 0; i < sz; i++) {
             func_decl * fd = get_constant(i);
             out << fd->get_name() << " = " << m_mpz_manager.to_string(get_value(fd)) << std::endl;
+        }
+    }
+
+    void set_model(model_ref const & mdl) {
+        for (unsigned i = 0; i < mdl->get_num_constants(); i++) {
+            func_decl * fd = mdl->get_constant(i);
+            expr * val = mdl->get_const_interp(fd);
+            if (m_entry_points.contains(fd)) {
+                if (m_manager.is_bool(val)) {
+                    set_value(fd, m_manager.is_true(val) ? m_mpz_manager.mk_z(1) : m_mpz_manager.mk_z(0));
+                }
+                else if (m_bv_util.is_numeral(val)) {
+                    rational r_val;
+                    unsigned bv_sz;
+                    m_bv_util.is_numeral(val, r_val, bv_sz);
+                    mpq q = r_val.to_mpq();
+                    SASSERT(m_mpz_manager.is_one(q.denominator()));
+                    set_value(fd, q.numerator());
+                }
+                else
+                    NOT_IMPLEMENTED_YET();
+            }
         }
     }
 
@@ -659,6 +693,9 @@ public:
                 else
                     m_scores.find(n).has_pos_occ = 1;
             }
+        }
+        else if (m_bv_util.is_bv(n)) {
+            /* CMW: I need this for optimization. Safe to ignore? */
         }
         else
             NOT_IMPLEMENTED_YET();

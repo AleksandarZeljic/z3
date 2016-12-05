@@ -27,57 +27,33 @@ import com.microsoft.z3.enumerations.Z3_parameter_kind;
 public class FuncDecl extends AST
 {
     /**
-     * Comparison operator.
-     * 
-     * @return True if {@code a"/> and <paramref name="b} share the
-     *         same context and are equal, false otherwise.
-     **/
-    /* Overloaded operators are not translated. */
-
-    /**
-     * Comparison operator.
-     * 
-     * @return True if {@code a"/> and <paramref name="b} do not
-     *         share the same context or are not equal, false otherwise.
-     **/
-    /* Overloaded operators are not translated. */
-
-    /**
      * Object comparison.
      **/
+    @Override
     public boolean equals(Object o)
     {
-        FuncDecl casted = (FuncDecl) o;
-        if (casted == null)
-            return false;
-        return this == casted;
+        if (o == this) return true;
+        if (!(o instanceof FuncDecl)) return false;
+        FuncDecl other = (FuncDecl) o;
+
+        return
+            (getContext().nCtx() == other.getContext().nCtx()) &&
+            (Native.isEqFuncDecl(
+                getContext().nCtx(),
+                getNativeObject(),
+                other.getNativeObject()));
     }
 
-    /**
-     * A hash code.
-     **/
-    public int hashCode()
-    {
-        return super.hashCode();
-    }
-
-    /**
-     * A string representations of the function declaration.
-     **/
+    @Override
     public String toString()
     {
-        try
-        {
-            return Native.funcDeclToString(getContext().nCtx(), getNativeObject());
-        } catch (Z3Exception e)
-        {
-            return "Z3Exception: " + e.getMessage();
-        }
+        return Native.funcDeclToString(getContext().nCtx(), getNativeObject());
     }
 
     /**
      * Returns a unique identifier for the function declaration.
      **/
+    @Override
     public int getId()
     {
         return Native.getFuncDeclId(getContext().nCtx(), getNativeObject());
@@ -93,7 +69,7 @@ public class FuncDecl extends AST
 
     /**
      * The size of the domain of the function declaration 
-     * @see getArity
+     * @see #getArity
      **/
     public int getDomainSize()
     {
@@ -376,9 +352,6 @@ public class FuncDecl extends AST
 
     /**
      * Create expression that applies function to arguments. 
-     * @param args 
-     * 
-     * @return
      **/
     public Expr apply(Expr ... args)
     {

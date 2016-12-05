@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _UINT_SET_H_
-#define _UINT_SET_H_
+#ifndef UINT_SET_H_
+#define UINT_SET_H_
 
 #include"util.h"
 #include"vector.h"
@@ -163,10 +163,11 @@ public:
     class iterator {
         uint_set const* m_set;
         unsigned  m_index;
+        unsigned  m_last;
 
-        bool invariant() const { return m_index <= m_set->get_max_elem(); }
+        bool invariant() const { return m_index <= m_last; }
 
-        bool at_end() const { return m_index == m_set->get_max_elem(); }
+        bool at_end() const { return m_index == m_last; }
 
         void scan_idx() {
             SASSERT(invariant());
@@ -200,7 +201,7 @@ public:
         }
     public:
         iterator(uint_set const& s, bool at_end): 
-            m_set(&s), m_index(at_end?s.get_max_elem():0) {
+            m_set(&s), m_index(at_end?s.get_max_elem():0), m_last(s.get_max_elem()) {
             scan();
             SASSERT(invariant());
           }
@@ -212,12 +213,25 @@ public:
         iterator & operator=(iterator const& other) { 
             m_set = other.m_set;
             m_index = other.m_index;
+            m_last = other.m_last;
             return *this;
         }
     };
 
     iterator const begin() const { return iterator(*this, false); }
     iterator const end() const { return iterator(*this, true); }
+
+    unsigned get_hash() const {
+        unsigned h = 0;
+        for (unsigned i = 0; i < size(); ++i) {
+            h += (i+1)*((*this)[i]);
+        }
+        return h;
+    }
+
+    struct eq { bool operator()(uint_set const& s1, uint_set const& s2) const { return s1 == s2; } };
+    struct hash { unsigned operator()(uint_set const& s) const { return s.get_hash(); } };
+        
 };
 
 inline std::ostream & operator<<(std::ostream & target, const uint_set & s) {
@@ -239,5 +253,5 @@ inline std::ostream & operator<<(std::ostream & target, const uint_set & s) {
     return target;
 }
 
-#endif /* _UINT_SET_H_ */
+#endif /* UINT_SET_H_ */
 

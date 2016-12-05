@@ -36,7 +36,6 @@ Revision History:
 #include "expr_functors.h"
 #include "quant_hoist.h"
 #include "bool_rewriter.h"
-#include "qe_util.h"
 #include "th_rewriter.h"
 #include "smt_kernel.h"
 #include "model_evaluator.h"
@@ -81,7 +80,7 @@ namespace qe {
             ptr_vector<expr> todo;
             ptr_vector<expr> conjs_closed, conjs_mixed, conjs_open;
             
-            qe::flatten_and(fml, conjs);
+            flatten_and(fml, conjs);
 
             for (unsigned i = 0; i < conjs.size(); ++i) {
                 todo.push_back(conjs[i].get());
@@ -306,7 +305,7 @@ namespace qe {
     // conj_enum
 
     conj_enum::conj_enum(ast_manager& m, expr* e): m(m), m_conjs(m) {
-        qe::flatten_and(e, m_conjs);
+        flatten_and(e, m_conjs);
     }
 
     void conj_enum::extract_equalities(expr_ref_vector& eqs) {
@@ -363,7 +362,7 @@ namespace qe {
             }
             app* ite;
             if (find_ite(fml, ite)) {
-                expr* cond, *th, *el;
+                expr* cond = 0, *th = 0, *el = 0;
                 VERIFY(m.is_ite(ite, cond, th, el));
                 expr_ref tmp1(fml, m), tmp2(fml, m);
                 m_replace->apply_substitution(ite, th, tmp1);
@@ -596,7 +595,7 @@ namespace qe {
                 p = m_pols.back();
                 if (!m_is_relevant(e)) {
                     pop();
-                    insert(e, p, p?e:m.mk_not(e));
+                    insert(e, p, p?e:mk_not(m, e));
                     continue;
                 }
                 if (!is_app(e)) {
@@ -634,7 +633,7 @@ namespace qe {
                 }
                 else {
                     pop();
-                    insert(e, p, p?e:m.mk_not(e));
+                    insert(e, p, p?e:mk_not(m, e));
                 }
 
             }
@@ -862,11 +861,12 @@ namespace qe {
 
         void operator()(expr_ref& fml, atom_set& pos, atom_set& neg) {
             expr_ref orig(fml);
-            ast_manager& m = fml.get_manager();
             m_nnf_core(fml);
             m_normalize_literals(fml);
             m_collect_atoms(fml, pos, neg);
-            TRACE("qe", tout << mk_ismt2_pp(orig, m) << "\n-->\n" << mk_ismt2_pp(fml, m) << "\n";);
+            TRACE("qe",
+                  ast_manager& m = fml.get_manager(); 
+                  tout << mk_ismt2_pp(orig, m) << "\n-->\n" << mk_ismt2_pp(fml, m) << "\n";);
         }      
 
         void reset() {
@@ -898,7 +898,6 @@ namespace qe {
 
         virtual void eliminate(bool is_forall, unsigned num_vars, app* const* vars, expr_ref& fml) = 0;      
 
-        virtual void set_cancel(bool f) = 0;
 
         virtual void updt_params(params_ref const& p) {}
         
@@ -1209,7 +1208,7 @@ namespace qe {
                 }
                 bool_rewriter(m).mk_or(fmls.size(), fmls.c_ptr(), fml);
                 
-                fml = m.mk_not(m.mk_iff(q, fml));
+                fml = mk_not(m, m.mk_iff(q, fml));
                 ast_smt_pp pp(m);
                 out << "; eliminate " << mk_pp(m_var, m) << "\n";
                 out << "(push)\n";
@@ -1304,12 +1303,7 @@ namespace qe {
             }
         }
         TRACE("qe_verbose", tout << "No plugin for " << mk_ismt2_pp(e, m) << "\n";);
-        if (p || m.is_not(e, e)) {
-            result = e;
-        } 
-        else {
-            result = m.mk_not(e);
-        }
+        result = p?e:mk_not(m, e);
     }
 
     void i_solver_context::mk_atom_fn::operator()(expr* e, bool p, expr_ref& result) {
@@ -1408,10 +1402,6 @@ namespace qe {
             m_conjs.add_plugin(p);
         }
 
-        void set_cancel(bool f) {
-            m_solver.set_cancel(f);
-            m_rewriter.set_cancel(f);
-        }
 
         void check(unsigned num_vars, app* const* vars, 
                    expr* assumption, expr_ref& fml, bool get_first,
@@ -1441,7 +1431,7 @@ namespace qe {
                 m_fml = f;
                 f = m_subfml;                
                 m_solver.assert_expr(f);
-            }           
+            }
             m_root.init(f);                       
             TRACE("qe", 
                   for (unsigned i = 0; i < num_vars; ++i) tout << mk_ismt2_pp(vars[i], m) << "\n";
@@ -1451,7 +1441,7 @@ namespace qe {
             if (assumption) m_solver.assert_expr(assumption);
             bool is_sat = false;   
             lbool res = l_true;
-            while (true) {
+            while (res == l_true) {
                 res = m_solver.check();
                 if (res == l_true) {
                     is_sat = true;
@@ -1596,7 +1586,7 @@ namespace qe {
             }
             m_literals.reset();
             while (node) {
-                m_literals.push_back(m.mk_not(node->assignment()));
+                m_literals.push_back(mk_not(m, node->assignment()));
                 node = node->parent();
             }    
             add_literal(l1);
@@ -1870,7 +1860,7 @@ namespace qe {
         //
         app* mk_eq_value(app* b, rational const& vl) {
             if (m.is_bool(b)) {
-                if (vl.is_zero()) return m.mk_not(b);
+                if (vl.is_zero()) return to_app(mk_not(m, b));
                 if (vl.is_one()) return b;
                 UNREACHABLE();
             }        
@@ -1910,8 +1900,7 @@ namespace qe {
         // The variable v is to be assigned a value in a range.
         // 
         void constrain_assignment() {
-            expr* fml = m_current->fml();
-            SASSERT(fml);
+            SASSERT(m_current->fml());
             rational k;
             app* x;
             if (!find_min_weight(x, k)) {
@@ -2032,7 +2021,6 @@ namespace qe {
         expr_ref                m_assumption;
         bool                    m_produce_models;
         ptr_vector<quant_elim_plugin> m_plugins;
-        volatile bool            m_cancel;
         bool                     m_eliminate_variables_as_block;
 
     public:
@@ -2041,7 +2029,6 @@ namespace qe {
             m_fparams(p),
             m_assumption(m),
             m_produce_models(m_fparams.m_model),
-            m_cancel(false),
             m_eliminate_variables_as_block(true)
           {
           }
@@ -2055,17 +2042,10 @@ namespace qe {
                 dealloc(m_plugins[i]);
             }
         }
-        
-        void set_cancel(bool f) {
-            for (unsigned i = 0; i < m_plugins.size(); ++i) {
-                m_plugins[i]->set_cancel(f);
-            }
-            m_cancel = f;
-        }
-        
+                
         void checkpoint() {
-            if (m_cancel)
-                throw tactic_exception(TACTIC_CANCELED_MSG);
+            if (m.canceled()) 
+                throw tactic_exception(m.limit().get_cancel_msg());
             cooperate("qe");
         }
 
@@ -2277,17 +2257,14 @@ namespace qe {
 
 
     void expr_quant_elim::instantiate_expr(expr_ref_vector& bound, expr_ref& fml) {
-        ptr_vector<sort> sorts;
-        get_free_vars(fml, sorts);
-        if (!sorts.empty()) {
+        expr_free_vars fv;
+        fv(fml);
+        fv.set_default_sort(m.mk_bool_sort());
+        if (!fv.empty()) {
             expr_ref tmp(m);
-            for (unsigned i = sorts.size(); i > 0;) {
+            for (unsigned i = fv.size(); i > 0;) {
                 --i;
-                sort* s = sorts[i];
-                if (!s) {
-                    s = m.mk_bool_sort();
-                }
-                bound.push_back(m.mk_fresh_const("bound", s));
+                bound.push_back(m.mk_fresh_const("bound", fv[i]));
             }
             var_subst subst(m);
             subst(fml, bound.size(), bound.c_ptr(), tmp);
@@ -2303,7 +2280,7 @@ namespace qe {
         }    
     }
 
-    static void extract_vars(quantifier* q, expr_ref& new_body, app_ref_vector& vars) {
+    void extract_vars(quantifier* q, expr_ref& new_body, app_ref_vector& vars) {
         ast_manager& m = new_body.get_manager();
         expr_ref tmp(m);
         unsigned nd = q->get_num_decls();
@@ -2412,11 +2389,6 @@ namespace qe {
         return is_sat != l_undef;
     }
 
-    void expr_quant_elim::set_cancel(bool f) {
-        if (m_qe) {
-            m_qe->set_cancel(f);
-        }
-    }
 
 
 
@@ -2438,7 +2410,6 @@ namespace qe {
             cache_result(q, q, 0); 
             return;
         }
-        ast_manager& m = m_manager;
 
         quantifier_ref new_q(m);
         expr * new_body = 0;
@@ -2464,7 +2435,6 @@ namespace qe {
     }
 
     void expr_quant_elim_star1::reduce_with_assumption(expr* ctx, expr* fml, expr_ref& result) {
-        ast_manager& m = m_manager;
         proof_ref pr(m);
         m_assumption = ctx;
         (*this)(fml, result, pr);
@@ -2628,12 +2598,12 @@ namespace qe {
             TRACE("qe", tout << "variables extracted" << mk_pp(result, m) << "\n";);
 
             if (old_q->is_forall()) {
-                result = m.mk_not(result);
+                result = mk_not(m, result);
             }
             m_ctx.solve(result, vars);
             if (old_q->is_forall()) {
                 expr* e = 0;
-                result = m.is_not(result, e)?e:m.mk_not(result);
+                result = m.is_not(result, e)?e:mk_not(m, result);
             }       
             var_shifter shift(m);
             shift(result, vars.size(), result);

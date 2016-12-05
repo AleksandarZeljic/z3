@@ -16,7 +16,9 @@ Author:
 Revision History:
 
 --*/
+#include<math.h>
 #include<float.h>
+#include<sstream>
 
 #ifdef _WINDOWS
 #pragma float_control( except, on )   // exception semantics; this does _not_ mean that exceptions are enabled (we want them off!)
@@ -24,34 +26,31 @@ Revision History:
 #pragma fp_contract(off)              // contractions off (`contraction' means x*y+z is turned into a fused-mul-add).
 #pragma fenv_access(on)               // fpu environment sensitivity (needed to be allowed to make FPU mode changes).
 #else
-#ifdef _WINDOWS
-#pragma STDC FENV_ACCESS ON
-#endif
-#include <math.h>
-#include <fenv.h>
+#include<fenv.h>
 #endif
 
-#ifndef _M_IA64
+#if defined(__x86_64__) || defined(_M_X64) ||	\
+    defined(__i386) || defined(_M_IX86)
 #define USE_INTRINSICS
 #endif
-
-#include<sstream>
 
 #include"hwf.h"
 
 // Note:
 // Which FPU will be used is determined by compiler settings. On x64 it's always SSE2,
-// on x86 we have to chose SSE2 by enabling /arch:SSE2 (otherwise the x87 FPU will be used). 
+// on x86 we have to chose SSE2 by enabling /arch:SSE2 (otherwise the x87 FPU will be used).
 // Christoph has decided that we don't want to use the x87; this makes everything a lot easier.
 
 
 // For SSE2, it is best to use compiler intrinsics because this makes it completely
 // clear to the compiler what instructions should be used. E.g., for sqrt(), the Windows compiler selects
-// the x87 FPU, even when /arch:SSE2 is on. 
+// the x87 FPU, even when /arch:SSE2 is on.
 // Luckily, these are kind of standardized, at least for Windows/Linux/OSX.
 #ifdef __clang__
 #undef USE_INTRINSICS
-#else
+#endif
+
+#ifdef USE_INTRINSICS
 #include <emmintrin.h>
 #endif
 
@@ -60,16 +59,16 @@ hwf_manager::hwf_manager() :
 {
 #ifdef _WINDOWS
 #if defined(_AMD64_) || defined(_M_IA64)
-    // Precision control is not supported on x64. 
+    // Precision control is not supported on x64.
     // See: http://msdn.microsoft.com/en-us/library/e9b52ceh(VS.110).aspx
-    // CMW: I think this is okay though, the compiler will chose the right instructions 
+    // CMW: I think this is okay though, the compiler will chose the right instructions
     // (the x64/SSE2 FPU has separate instructions for different precisions).
 #else
     // Setting the precision should only be required on the x87, but it won't hurt to do it anyways.
     // _PC_53 means double precision (53 significand bits). For extended precision use _PC_64.
 
 #ifndef USE_INTRINSICS
-    __control87_2(_PC_53, _MCW_PC, &x86_state, &sse2_state);    
+    __control87_2(_PC_53, _MCW_PC, &x86_state, &sse2_state);
 #endif
 #endif
 #else
@@ -79,7 +78,7 @@ hwf_manager::hwf_manager() :
     // We only set the precision of the FPU here in the constructor. At the moment, there are no
     // other parts of the code that could overwrite this, and Windows takes care of context switches.
 
-    // CMW: I'm not sure what happens on CPUs with hyper-threading (since the FPU is shared). 
+    // CMW: I'm not sure what happens on CPUs with hyper-threading (since the FPU is shared).
     // I have yet to discover whether Linux and OSX save the FPU state when switching context.
     // As long as we stick to using the SSE2 FPU though, there shouldn't be any problems with respect
     // to the precision (not sure about the rounding modes though).
@@ -89,8 +88,8 @@ hwf_manager::~hwf_manager()
 {
 }
 
-#define RAW(X) (*reinterpret_cast<const uint64*>(&(X)))
-#define DBL(X) (*reinterpret_cast<const double*>(&(X)))
+uint64 RAW(double X) { uint64 tmp; memcpy(&tmp, &(X), sizeof(uint64)); return tmp; }
+double DBL(uint64 X) { double tmp; memcpy(&tmp, &(X), sizeof(double)); return tmp; }
 
 void hwf_manager::set(hwf & o, int value) {
     o.value = (double) value;
@@ -105,7 +104,7 @@ void hwf_manager::set(hwf & o, double value) {
     o.value = value;
 }
 
-void hwf_manager::set(hwf & o, float value) {    
+void hwf_manager::set(hwf & o, float value) {
     o.value = (double)value;
 }
 
@@ -114,7 +113,7 @@ void hwf_manager::set(hwf & o, mpf_rounding_mode rm, mpq const & value) {
     o.value = m_mpq_manager.get_double(value);
 }
 
-void hwf_manager::set(hwf & o, mpf_rounding_mode rm, char const * value) {    
+void hwf_manager::set(hwf & o, mpf_rounding_mode rm, char const * value) {
     // We expect [i].[f]P[e], where P means that the exponent is interpreted as 2^e instead of 10^e.
 
     std::string v(value);
@@ -124,17 +123,17 @@ void hwf_manager::set(hwf & o, mpf_rounding_mode rm, char const * value) {
     std::string f, e;
 
     f = (e_pos != std::string::npos) ? v.substr(0, e_pos) : v;
-    e = (e_pos != std::string::npos) ? v.substr(e_pos+1) : "0";    
+    e = (e_pos != std::string::npos) ? v.substr(e_pos+1) : "0";
 
-    TRACE("mpf_dbg", tout << " f = " << f << " e = " << e << std::endl;);   
+    TRACE("mpf_dbg", tout << " f = " << f << " e = " << e << std::endl;);
 
-    mpq q;    
+    mpq q;
     m_mpq_manager.set(q, f.c_str());
 
     mpz ex;
     m_mpz_manager.set(ex, e.c_str());
 
-    set(o, rm, q, ex);    
+    set(o, rm, q, ex);
 
     TRACE("mpf_dbg", tout << "set: res = " << to_string(o) << std::endl;);
 }
@@ -143,7 +142,7 @@ void hwf_manager::set(hwf & o, mpf_rounding_mode rm, mpq const & significand, mp
     // Assumption: this represents significand * 2^exponent.
     set_rounding_mode(rm);
 
-    mpq sig; 
+    mpq sig;
     m_mpq_manager.set(sig, significand);
     int64 exp = m_mpz_manager.get_int64(exponent);
 
@@ -151,7 +150,7 @@ void hwf_manager::set(hwf & o, mpf_rounding_mode rm, mpq const & significand, mp
         o.value = 0.0;
     else
     {
-        while (m_mpq_manager.lt(sig, 1)) 
+        while (m_mpq_manager.lt(sig, 1))
         {
             m_mpq_manager.mul(sig, 2, sig);
             exp--;
@@ -170,14 +169,14 @@ void hwf_manager::set(hwf & o, bool sign, uint64 significand, int exponent) {
     uint64 raw = (sign?0x8000000000000000ull:0);
     raw |= (((uint64)exponent) + 1023) << 52;
     raw |= significand;
-    o.value = *reinterpret_cast<double*>(&raw);
+    memcpy(&o.value, &raw, sizeof(double));
 }
 
 void hwf_manager::set(hwf & o, hwf const & x) {
     o.value = x.value;
 }
 
-void hwf_manager::abs(hwf & o) {    
+void hwf_manager::abs(hwf & o) {
     o.value = fabs(o.value);
 }
 
@@ -240,65 +239,14 @@ void hwf_manager::mul(mpf_rounding_mode rm, hwf const & x, hwf const & y, hwf & 
 #else
     o.value = x.value * y.value;
 #endif
-
-#if 0
-    // On the x86 FPU (x87), we use custom assembly routines because
-    // the code generated for x*y and x/y suffers from the double
-    // rounding on underflow problem. The scaling trick is described
-    // in Roger Golliver: `Efficiently producing default orthogonal IEEE 
-    // double results using extended IEEE hardware', see
-    // http://www.open-std.org/JTC1/SC22/JSG/docs/m3/docs/jsgn326.pdf
-    // CMW: Tthis is not really needed if we use only the SSE2 FPU,
-    // it shouldn't hurt the performance too much though.
-
-    static const int const1 = -DBL_SCALE;
-    static const int const2 = +DBL_SCALE;    
-    double xv = x.value;
-    double yv = y.value;
-    double & ov = o.value;
-
-    __asm {
-        fild const1;
-        fld xv;
-        fscale;
-        fstp st(1);
-        fmul yv;
-        fild const2;
-        fxch st(1);
-        fscale;
-        fstp ov;
-    }    
-#endif
 }
 
 void hwf_manager::div(mpf_rounding_mode rm, hwf const & x, hwf const & y, hwf & o) {
     set_rounding_mode(rm);
 #ifdef USE_INTRINSICS
-    _mm_store_sd(&o.value, _mm_div_sd(_mm_set_sd(x.value), _mm_set_sd(y.value)));    
+    _mm_store_sd(&o.value, _mm_div_sd(_mm_set_sd(x.value), _mm_set_sd(y.value)));
 #else
     o.value = x.value / y.value;
-#endif
-
-#if 0
-    // see mul(...)
-
-    static const int const1 = -DBL_SCALE;
-    static const int const2 = +DBL_SCALE;
-    double xv = x.value;
-    double yv = y.value;
-    double & ov = o.value;
-
-    __asm {
-        fild const1;
-        fld xv;
-        fscale;
-        fstp st(1);
-        fdiv yv;
-        fild const2;
-        fxch st(1);
-        fscale;
-        fstp ov;
-    }
 #endif
 }
 
@@ -306,20 +254,31 @@ void hwf_manager::div(mpf_rounding_mode rm, hwf const & x, hwf const & y, hwf & 
 #pragma fp_contract(on)
 #endif
 
-void hwf_manager::fused_mul_add(mpf_rounding_mode rm, hwf const & x, hwf const & y, hwf const &z, hwf & o) {
-    // CMW: fused_mul_add is not available on most CPUs. As of 2012, only Itanium, 
+void hwf_manager::fma(mpf_rounding_mode rm, hwf const & x, hwf const & y, hwf const &z, hwf & o) {
+    // CMW: fused_mul_add is not available on most CPUs. As of 2012, only Itanium,
     // Intel Sandybridge and AMD Bulldozers support that (via AVX).
+
+    set_rounding_mode(rm);
 
 #ifdef _M_IA64
     // IA64 (Itanium) will do it, if contractions are on.
-    set_rounding_mode(rm);
     o.value = x.value * y.value + z.value;
 #else
-    // NOT_IMPLEMENTED_YET();
-    // Just a dummy for now:
-    hwf t;
-    mul(rm, x, y, t);
-    add(rm, t, z, o);
+#if defined(_WINDOWS)
+#if _MSC_VER >= 1800
+    o.value = ::fma(x.value, y.value, z.value);
+#else // Windows, older than VS 2013
+  #ifdef USE_INTRINSICS
+      _mm_store_sd(&o.value, _mm_fmadd_sd(_mm_set_sd(x.value), _mm_set_sd(y.value), _mm_set_sd(z.value)));
+  #else
+      // If all else fails, we are imprecise.
+      o.value = (x.value * y.value) + z;
+  #endif
+#endif
+#else
+    // Linux, OSX
+    o.value = ::fma(x.value, y.value, z.value);
+#endif
 #endif
 }
 
@@ -338,37 +297,47 @@ void hwf_manager::sqrt(mpf_rounding_mode rm, hwf const & x, hwf & o) {
 
 void hwf_manager::round_to_integral(mpf_rounding_mode rm, hwf const & x, hwf & o) {
     set_rounding_mode(rm);
-    modf(x.value, &o.value);
-    // Note: on x64, this sometimes produces an SNAN instead of a QNAN?
+    // CMW: modf is not the right function here.
+    // modf(x.value, &o.value);
+
+    // According to the Intel Architecture manual, the x87-instrunction FRNDINT is the
+    // same in 32-bit and 64-bit mode. The _mm_round_* intrinsics are SSE4 extensions.
+#ifdef _WINDOWS
+#ifdef USE_INTRINSICS
+    switch (rm) {
+    case 0: _mm_store_sd(&o.value, _mm_round_pd(_mm_set_sd(x.value), _MM_FROUND_TO_NEAREST_INT)); break;
+    case 2: _mm_store_sd(&o.value, _mm_round_pd(_mm_set_sd(x.value), _MM_FROUND_TO_POS_INF)); break;
+    case 3: _mm_store_sd(&o.value, _mm_round_pd(_mm_set_sd(x.value), _MM_FROUND_TO_NEG_INF)); break;
+    case 4: _mm_store_sd(&o.value, _mm_round_pd(_mm_set_sd(x.value), _MM_FROUND_TO_ZERO)); break;
+    case 1:
+        UNREACHABLE(); // Note: MPF_ROUND_NEAREST_TAWAY is not supported by the hardware!
+        break;
+    default:
+        UNREACHABLE(); // Unknown rounding mode.
+    }
+#else
+    double xv = x.value;
+    double & ov = o.value;
+
+    __asm {
+        fld     xv
+        frndint
+        fstp    ov // Store result away.
+    }
+#endif
+#else
+    // Linux, OSX.
+    o.value = nearbyint(x.value);
+#endif
 }
 
 void hwf_manager::rem(hwf const & x, hwf const & y, hwf & o) {
-    // The built-in fmod() works, except for the special numbers.
-
-    if (is_inf(x) && is_inf(y))
-        o.value = x.value/y.value; // NaN
-    else if (is_inf(y))
-        o.value = x.value;
-    else 
-        o.value = fmod(x.value, y.value);
-
-    // Here is an x87 alternative if the above makes problems; this may also be faster.
-#if 0
-    double xv = x.value;
-    double yv = y.value;
-    double & ov = o.value;
-
-    // This is from: http://webster.cs.ucr.edu/AoA/DOS/ch14/CH14-4.html#HEADING4-173
-    __asm {
-        fld     yv
-        fld     xv
-L:      fprem1
-        fstsw   ax              // Get condition bits in AX.
-        test    ah, 100b        // See if C2 is set.
-        jnz     L               // Repeat if not done yet.
-        fstp    ov              // Store remainder away.
-        fstp    st(0)           // Pop old y value.
-    }
+#if defined(_WINDOWS) && _MSC_VER <= 1700
+    o.value = fmod(x.value, y.value);
+    if (o.value >= (y.value/2.0))
+        o.value -= y.value;
+#else
+    o.value = remainder(x.value, y.value);
 #endif
 }
 
@@ -383,7 +352,7 @@ void hwf_manager::maximum(hwf const & x, hwf const & y, hwf & o) {
         o.value = x.value;
     else if (lt(x, y))
         o.value = y.value;
-    else 
+    else
         o.value = x.value;
 #endif
 }
@@ -399,12 +368,12 @@ void hwf_manager::minimum(hwf const & x, hwf const & y, hwf & o) {
         o.value = x.value;
     else if (lt(x, y))
         o.value = x.value;
-    else 
+    else
         o.value = y.value;
 #endif
 }
 
-std::string hwf_manager::to_string(hwf const & x) {    
+std::string hwf_manager::to_string(hwf const & x) {
     std::stringstream ss("");
     ss << std::scientific << x.value;
     return ss.str();
@@ -448,9 +417,9 @@ void hwf_manager::to_rational(hwf const & x, unsynch_mpq_manager & qm, mpq & o) 
     int e = exp(x);
     if (e >= 0)
         qm.mul2k(n, (unsigned)e);
-    else 
+    else
         qm.mul2k(d, (unsigned)-e);
-    qm.set(o, n, d);    
+    qm.set(o, n, d);
 }
 
 bool hwf_manager::is_zero(hwf const & x) {
@@ -519,13 +488,13 @@ bool hwf_manager::is_denormal(hwf const & x) {
             (t & 0x000FFFFFFFFFFFFFull) != 0x0);
 }
 
-bool hwf_manager::is_regular(hwf const & x) {    
+bool hwf_manager::is_regular(hwf const & x) {
     // Everything that doesn't have the top-exponent is considered regular.
     // Note that +-0.0 and denormal numbers have exponent==0; these are regular.
-    // All normal numbers are also regular. What remains is +-Inf and NaN, they are 
+    // All normal numbers are also regular. What remains is +-Inf and NaN, they are
     // not regular and they are the only numbers that have exponent 7FF.
     uint64 e = RAW(x.value) & 0x7FF0000000000000ull; // the exponent
-    return (e != 0x7FF0000000000000ull); 
+    return (e != 0x7FF0000000000000ull);
 }
 
 bool hwf_manager::is_int(hwf const & x) {
@@ -556,8 +525,8 @@ void hwf_manager::mk_pzero(hwf & o) {
 }
 
 void hwf_manager::mk_zero(bool sign, hwf & o) {
-    if (sign) 
-        mk_nzero(o);    
+    if (sign)
+        mk_nzero(o);
     else
         mk_pzero(o);
 }
@@ -587,7 +556,7 @@ void hwf_manager::mk_ninf(hwf & o) {
 #ifdef USE_INTRINSICS
 #define SETRM(RM) _MM_SET_ROUNDING_MODE(RM)
 #else
-#define SETRM(RM) _controlfp_s(&sse2_state, RM, _MCW_RC); 
+#define SETRM(RM) _controlfp_s(&sse2_state, RM, _MCW_RC);
 #endif
 #else
 #ifdef USE_INTRINSICS
@@ -651,7 +620,7 @@ void hwf_manager::set_rounding_mode(mpf_rounding_mode rm)
 #endif
 #else // OSX/Linux
     switch (rm) {
-    case MPF_ROUND_NEAREST_TEVEN:             
+    case MPF_ROUND_NEAREST_TEVEN:
         SETRM(FE_TONEAREST);
         break;
     case MPF_ROUND_TOWARD_POSITIVE:

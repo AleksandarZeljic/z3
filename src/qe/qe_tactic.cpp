@@ -22,17 +22,16 @@ Revision History:
 #include"qe.h"
 
 class qe_tactic : public tactic {
+    statistics               m_st;
     struct     imp {
         ast_manager &            m;
         smt_params               m_fparams;
-        volatile bool            m_cancel;
         qe::expr_quant_elim      m_qe;
 
         imp(ast_manager & _m, params_ref const & p):
             m(_m),
             m_qe(m, m_fparams) {
             updt_params(p);
-            m_cancel = false;
         }
 
         void updt_params(params_ref const & p) {
@@ -45,14 +44,9 @@ class qe_tactic : public tactic {
             m_qe.collect_param_descrs(r);
         }
 
-        void set_cancel(bool f) {
-            m_cancel = f;
-            m_qe.set_cancel(f);
-        }
-
         void checkpoint() {
-            if (m_cancel)
-                throw tactic_exception(TACTIC_CANCELED_MSG);
+            if (m.canceled()) 
+                throw tactic_exception(m.limit().get_cancel_msg());
             cooperate("qe");
         }
 
@@ -85,10 +79,19 @@ class qe_tactic : public tactic {
                 g->update(i, new_f, new_pr, g->dep(i));                
             }
             g->inc_depth();
+            g->elim_true();
             result.push_back(g.get());
             TRACE("qe", g->display(tout););
             SASSERT(g->is_well_sorted());
         }
+
+        void collect_statistics(statistics & st) const {
+            m_qe.collect_statistics(st);
+        }
+
+        void reset_statistics() {            
+        }
+
     };
     
     imp *      m_imp;
@@ -124,28 +127,26 @@ public:
                             proof_converter_ref & pc,
                             expr_dependency_ref & core) {
         (*m_imp)(in, result, mc, pc, core);
+        m_st.reset();
+        m_imp->collect_statistics(m_st);
+        
     }
+
+    virtual void collect_statistics(statistics & st) const {
+        st.copy(m_st);
+    }
+
+    virtual void reset_statistics() {
+        m_st.reset();
+    }
+
     
     virtual void cleanup() {
         ast_manager & m = m_imp->m;
-        imp * d = m_imp;
-        #pragma omp critical (tactic_cancel)
-        {
-            m_imp = 0;
-        }
-        dealloc(d);
-        d = alloc(imp, m, m_params);
-        #pragma omp critical (tactic_cancel)
-        {
-            m_imp = d;
-        }
+        dealloc(m_imp);
+        m_imp = alloc(imp, m, m_params);
     }
     
-protected:
-    virtual void set_cancel(bool f) {
-        if (m_imp)
-            m_imp->set_cancel(f);
-    }
 };
 
 tactic * mk_qe_tactic(ast_manager & m, params_ref const & p) {

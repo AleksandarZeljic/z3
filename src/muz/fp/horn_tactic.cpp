@@ -28,6 +28,8 @@ Revision History:
 #include"filter_model_converter.h"
 #include"dl_transforms.h"
 #include"fixedpoint_params.hpp"
+#include"ast_util.h"
+#include"var_subst.h"
 
 class horn_tactic : public tactic {
     struct imp {
@@ -36,6 +38,7 @@ class horn_tactic : public tactic {
         datalog::register_engine m_register_engine;
         datalog::context         m_ctx;
         smt_params               m_fparams;
+        expr_free_vars           m_free_vars;
 
         imp(bool t, ast_manager & m, params_ref const & p):
             m(m),
@@ -58,12 +61,6 @@ class horn_tactic : public tactic {
 
         void collect_statistics(statistics & st) const {
             m_ctx.collect_statistics(st);
-        }
-
-        void set_cancel(bool f) {
-            if (f) {
-                m_ctx.cancel();
-            }
         }
 
         void normalize(expr_ref& f) {
@@ -145,7 +142,7 @@ class horn_tactic : public tactic {
             expr_ref_vector args(m), body(m);
             expr_ref head(m);
             expr* a = 0, *a1 = 0;
-            qe::flatten_or(tmp, args);
+            flatten_or(tmp, args);
             for (unsigned i = 0; i < args.size(); ++i) {
                 a = args[i].get(); 
                 check_predicate(mark, a);
@@ -190,7 +187,7 @@ class horn_tactic : public tactic {
             bool produce_proofs = g->proofs_enabled();
 
             if (produce_proofs) {                
-                if (!m_ctx.get_params().generate_proof_trace()) {
+                if (!m_ctx.generate_proof_trace()) {
                     params_ref params = m_ctx.get_params().p;
                     params.set_bool("generate_proof_trace", true);
                     updt_params(params);
@@ -227,6 +224,7 @@ class horn_tactic : public tactic {
                 register_predicate(q);
                 for (unsigned i = 0; i < queries.size(); ++i) {
                     f = mk_rule(queries[i].get(), q);
+                    bind_variables(f);
                     m_ctx.add_rule(f, symbol::null);
                 }
                 queries.reset();
@@ -302,6 +300,20 @@ class horn_tactic : public tactic {
             SASSERT(g->is_well_sorted());
         }
 
+        void bind_variables(expr_ref& f) {
+            m_free_vars.reset();
+            m_free_vars(f);
+            m_free_vars.set_default_sort(m.mk_bool_sort());
+            if (!m_free_vars.empty()) {
+                m_free_vars.reverse();
+                svector<symbol> names;
+                for (unsigned i = 0; i < m_free_vars.size(); ++i) {
+                    names.push_back(symbol(m_free_vars.size() - i - 1));
+                }
+                f = m.mk_forall(m_free_vars.size(), m_free_vars.c_ptr(), names.c_ptr(), f);
+            }
+        }
+
         void simplify(expr* q, 
                     goal_ref const& g,
                     goal_ref_buffer & result, 
@@ -316,7 +328,7 @@ class horn_tactic : public tactic {
             m_ctx.get_rules(); // flush adding rules.
             apply_default_transformation(m_ctx);
             
-            if (m_ctx.get_params().slice()) {
+            if (m_ctx.xform_slice()) {
                 datalog::rule_transformer transformer(m_ctx);
                 datalog::mk_slice* slice = alloc(datalog::mk_slice, m_ctx);
                 transformer.register_plugin(slice);
@@ -334,7 +346,7 @@ class horn_tactic : public tactic {
             datalog::rule_set::iterator it = rules.begin(), end = rules.end();
             for (; it != end; ++it) {
                 datalog::rule* r = *it;
-                r->to_formula(fml);
+                m_ctx.get_rule_manager().to_formula(*r, fml);
                 (*rep)(fml);
                 g->assert_expr(fml);
             }
@@ -391,25 +403,13 @@ public:
     
     virtual void cleanup() {
         ast_manager & m = m_imp->m;
-        imp * d = m_imp;
-        d->collect_statistics(m_stats);
-        #pragma omp critical (tactic_cancel)
-        {
-            m_imp = 0;
-        }
-        dealloc(d);
-        d = alloc(imp, m_is_simplify, m, m_params);
-        #pragma omp critical (tactic_cancel)
-        {
-            m_imp = d;
-        }
+        m_imp->collect_statistics(m_stats);
+        dealloc(m_imp);
+        m_imp = alloc(imp, m_is_simplify, m, m_params);
+        
     }
     
-protected:
-    virtual void set_cancel(bool f) {
-        if (m_imp)
-            m_imp->set_cancel(f);
-    }
+
 };
 
 tactic * mk_horn_tactic(ast_manager & m, params_ref const & p) {

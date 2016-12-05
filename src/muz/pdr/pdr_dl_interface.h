@@ -17,8 +17,8 @@ Revision History:
 
 --*/
 
-#ifndef _PDR_DL_INTERFACE_H_
-#define _PDR_DL_INTERFACE_H_
+#ifndef PDR_DL_INTERFACE_H_
+#define PDR_DL_INTERFACE_H_
 
 #include "lbool.h"
 #include "dl_rule.h"
@@ -50,10 +50,6 @@ namespace pdr {
         ~dl_interface();
         
         virtual lbool query(expr* query);
-
-        virtual void cancel();
-
-        virtual void cleanup();
 
         virtual void display_certificate(std::ostream& out) const;
 

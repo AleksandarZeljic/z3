@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _DL_RELATION_MANAGER_H_
-#define _DL_RELATION_MANAGER_H_
+#ifndef DL_RELATION_MANAGER_H_
+#define DL_RELATION_MANAGER_H_
 
 
 #include"map.h"
@@ -43,6 +43,7 @@ namespace datalog {
         class default_relation_select_equal_and_project_fn;
         class default_relation_intersection_filter_fn;
         class default_relation_filter_interpreted_and_project_fn;
+        class default_relation_apply_sequential_fn;
 
         class auxiliary_table_transformer_fn;
         class auxiliary_table_filter_fn;
@@ -72,7 +73,7 @@ namespace datalog {
         typedef map<const relation_plugin *, finite_product_relation_plugin *, ptr_hash<const relation_plugin>, 
             ptr_eq<const relation_plugin> > rp2fprp_map;
 
-        typedef map<func_decl *, relation_base *, ptr_hash<func_decl>, ptr_eq<func_decl> > relation_map;
+        typedef obj_map<func_decl, relation_base *> relation_map;
         typedef ptr_vector<table_plugin> table_plugin_vector;
         typedef ptr_vector<relation_plugin> relation_plugin_vector;
 
@@ -175,6 +176,7 @@ namespace datalog {
         table_plugin * get_table_plugin(symbol const& s);
         relation_plugin * get_relation_plugin(symbol const& s);
         relation_plugin & get_relation_plugin(family_id kind);
+        void              set_favourite_plugin(relation_plugin* p) { m_favourite_relation_plugin = p; }
         table_relation_plugin & get_table_relation_plugin(table_plugin & tp);
         bool try_get_finite_product_relation_plugin(const relation_plugin & inner, 
             finite_product_relation_plugin * & res);
@@ -222,8 +224,6 @@ namespace datalog {
         void table_fact_to_relation(const relation_signature & s, const table_fact & from, 
             relation_fact & to);
 
-
-        void set_cancel(bool f);
 
 
         // -----------------------------------
@@ -352,8 +352,12 @@ namespace datalog {
 
         relation_mutator_fn * mk_filter_interpreted_fn(const relation_base & t, app * condition);
 
+
         relation_transformer_fn * mk_filter_interpreted_and_project_fn(const relation_base & t, app * condition,
             unsigned removed_col_cnt, const unsigned * removed_cols);
+
+        relation_mutator_fn * mk_apply_sequential_fn(unsigned n, relation_mutator_fn* * mutators);
+
 
         /**
             \brief Operations that returns all rows of \c t for which is column \c col equal to \c value
@@ -697,5 +701,5 @@ namespace datalog {
 
 };
 
-#endif /* _DL_RELATION_MANAGER_H_ */
+#endif /* DL_RELATION_MANAGER_H_ */
 

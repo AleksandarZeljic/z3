@@ -17,8 +17,8 @@ Revision History:
 
 --*/
 
-#ifndef _DL_SPARSE_TABLE_H_
-#define _DL_SPARSE_TABLE_H_
+#ifndef DL_SPARSE_TABLE_H_
+#define DL_SPARSE_TABLE_H_
 
 #include<iostream>
 #include<list>
@@ -350,7 +350,7 @@ namespace datalog {
                 *ptr&=m_write_mask;
                 *ptr|=val<<m_small_offset;
             }
-            unsigned const next_ofs() const { return m_offset+m_length; }
+            unsigned next_ofs() const { return m_offset+m_length; }
         };
         class column_layout : public svector<column_info> {
 
@@ -495,4 +495,4 @@ namespace datalog {
 
  };
 
- #endif /* _DL_SPARSE_TABLE_H_ */
+#endif /* DL_SPARSE_TABLE_H_ */

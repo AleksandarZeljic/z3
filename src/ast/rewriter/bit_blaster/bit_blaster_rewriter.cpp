@@ -30,7 +30,7 @@ struct blaster_cfg {
     bool_rewriter & m_rewriter;
     bv_util &       m_util;
     blaster_cfg(bool_rewriter & r, bv_util & u):m_rewriter(r), m_util(u) {}
-    
+
     ast_manager & m() const { return m_util.get_manager(); }
     numeral power(unsigned n) const { return rational::power_of_two(n); }
     void mk_xor(expr * a, expr * b, expr_ref & r) { m_rewriter.mk_xor(a, b, r); }
@@ -59,15 +59,12 @@ struct blaster_cfg {
         mk_or(a, c, t2);
         mk_or(b, c, t3);
         mk_and(t1, t2, t3, r);
-#endif 
+#endif
     }
     void mk_ite(expr * c, expr * t, expr * e, expr_ref & r) { m_rewriter.mk_ite(c, t, e, r); }
     void mk_nand(expr * a, expr * b, expr_ref & r) { m_rewriter.mk_nand(a, b, r); }
     void mk_nor(expr * a, expr * b, expr_ref & r) { m_rewriter.mk_nor(a, b, r); }
 };
-
-// CMW: GCC/LLVM do not like this definition because a symbol of the same name exists in assert_set_bit_blaster.o
-// template class bit_blaster_tpl<blaster_cfg>;
 
 class blaster : public bit_blaster_tpl<blaster_cfg> {
     bool_rewriter           m_rewriter;
@@ -92,6 +89,9 @@ struct blaster_rewriter_cfg : public default_rewriter_cfg {
     expr_ref_vector                          m_out;
     obj_map<func_decl, expr*>                m_const2bits;
     expr_ref_vector                          m_bindings;
+    func_decl_ref_vector                     m_keys;
+    expr_ref_vector                          m_values;
+    unsigned_vector                          m_keyval_lim;
 
     bool                                     m_blast_mul;
     bool                                     m_blast_add;
@@ -109,19 +109,20 @@ struct blaster_rewriter_cfg : public default_rewriter_cfg {
         m_out.finalize();
         m_bindings.finalize();
     }
-    
+
     blaster_rewriter_cfg(ast_manager & m, blaster & b, params_ref const & p):
         m_manager(m),
         m_blaster(b),
         m_in1(m),
         m_in2(m),
         m_out(m),
-        m_bindings(m) {
+        m_bindings(m),
+        m_keys(m),
+        m_values(m) {
         updt_params(p);
     }
 
     ~blaster_rewriter_cfg() {
-        dec_ref_map_key_values(m_manager, m_const2bits);
     }
 
     void updt_params(params_ref const & p) {
@@ -136,7 +137,7 @@ struct blaster_rewriter_cfg : public default_rewriter_cfg {
 
     bool rewrite_patterns() const { return true; }
 
-    bool max_steps_exceeded(unsigned num_steps) const { 
+    bool max_steps_exceeded(unsigned num_steps) const {
         cooperate("bit blaster");
         if (memory::get_allocation_size() > m_max_memory)
             throw rewriter_exception(Z3_MAX_MEMORY_MSG);
@@ -154,6 +155,29 @@ struct blaster_rewriter_cfg : public default_rewriter_cfg {
                 out_bits.push_back(m().mk_app(butil().get_family_id(), OP_BIT2BOOL, 1, &p, 1, &t));
             }
             SASSERT(bv_size == out_bits.size());
+        }
+    }
+
+    void push() {
+        m_keyval_lim.push_back(m_keys.size());
+    }
+
+    unsigned get_num_scopes() const {
+        return m_keyval_lim.size();
+    }
+
+    void pop(unsigned num_scopes) {
+        if (num_scopes > 0) {
+            SASSERT(num_scopes <= m_keyval_lim.size());
+            unsigned new_sz = m_keyval_lim.size() - num_scopes;
+            unsigned lim = m_keyval_lim[new_sz];
+            for (unsigned i = m_keys.size(); i > lim; ) {
+                --i;
+                m_const2bits.remove(m_keys[i].get());
+            }
+            m_keys.resize(lim);
+            m_values.resize(lim);
+            m_keyval_lim.resize(new_sz);
         }
     }
 
@@ -180,8 +204,8 @@ struct blaster_rewriter_cfg : public default_rewriter_cfg {
         }
         r = mk_mkbv(m_out);
         m_const2bits.insert(f, r);
-        m_manager.inc_ref(f);
-        m_manager.inc_ref(r);
+        m_keys.push_back(f);
+        m_values.push_back(r);
         result = r;
     }
 
@@ -197,7 +221,7 @@ void OP(expr * arg, expr_ref & result) {                        \
     MK_UNARY_REDUCE(reduce_not, mk_not);
     MK_UNARY_REDUCE(reduce_redor, mk_redor);
     MK_UNARY_REDUCE(reduce_redand, mk_redand);
-    
+
 #define MK_BIN_REDUCE(OP, BB_OP)                                        \
 void OP(expr * arg1, expr * arg2, expr_ref & result) {                  \
     m_in1.reset(); m_in2.reset();                                       \
@@ -267,11 +291,11 @@ MK_PARAMETRIC_UNARY_REDUCE(reduce_sign_extend, mk_sign_extend);
     void reduce_ite(expr * arg1, expr * arg2, expr * arg3, expr_ref & result) {
         m_in1.reset();
         m_in2.reset();
-        get_bits(arg2, m_in1);                                                     
-        get_bits(arg3, m_in2);                                                     
+        get_bits(arg2, m_in1);
+        get_bits(arg3, m_in2);
         m_out.reset();
         m_blaster.mk_multiplexer(arg1, m_in1.size(), m_in1.c_ptr(), m_in2.c_ptr(), m_out);
-        result = mk_mkbv(m_out);                                                
+        result = mk_mkbv(m_out);
     }
 
     void reduce_concat(unsigned num_args, expr * const * args, expr_ref & result) {
@@ -320,7 +344,7 @@ MK_PARAMETRIC_UNARY_REDUCE(reduce_sign_extend, mk_sign_extend);
         result    = mk_mkbv(bits);
         result_pr = 0;
     }
-    
+
     br_status reduce_app(func_decl * f, unsigned num, expr * const * args, expr_ref & result, proof_ref & result_pr) {
         result_pr = 0;
         TRACE("bit_blaster", tout << f->get_name() << " ";
@@ -330,7 +354,7 @@ MK_PARAMETRIC_UNARY_REDUCE(reduce_sign_extend, mk_sign_extend);
             mk_const(f, result);
             return BR_DONE;
         }
-        
+
         if (m().is_eq(f)) {
             SASSERT(num == 2);
             if (butil().is_bv(args[0])) {
@@ -339,7 +363,8 @@ MK_PARAMETRIC_UNARY_REDUCE(reduce_sign_extend, mk_sign_extend);
             }
             return BR_FAILED;
         }
-        
+
+
         if (m().is_ite(f)) {
             SASSERT(num == 3);
             if (butil().is_bv(args[1])) {
@@ -348,7 +373,7 @@ MK_PARAMETRIC_UNARY_REDUCE(reduce_sign_extend, mk_sign_extend);
             }
             return BR_FAILED;
         }
-        
+
         if (f->get_family_id() == butil().get_family_id()) {
             switch (f->get_decl_kind()) {
             case OP_BV_NUM:
@@ -430,7 +455,7 @@ MK_PARAMETRIC_UNARY_REDUCE(reduce_sign_extend, mk_sign_extend);
             case OP_BXOR:
                 reduce_xor(num, args, result);
                 return BR_DONE;
-                
+
             case OP_CONCAT:
                 reduce_concat(num, args, result);
                 return BR_DONE;
@@ -484,7 +509,7 @@ MK_PARAMETRIC_UNARY_REDUCE(reduce_sign_extend, mk_sign_extend);
                 SASSERT(num == 2);
                 reduce_smul_no_underflow(args[0], args[1], result);
                 return BR_DONE;
-                
+
             case OP_BIT2BOOL:
             case OP_MKBV:
             case OP_INT2BV:
@@ -501,7 +526,7 @@ MK_PARAMETRIC_UNARY_REDUCE(reduce_sign_extend, mk_sign_extend);
             blast_bv_term(m().mk_app(f, num, args), result, result_pr);
             return BR_DONE;
         }
-        
+
         return BR_FAILED;
     }
 
@@ -547,18 +572,18 @@ MK_PARAMETRIC_UNARY_REDUCE(reduce_sign_extend, mk_sign_extend);
             result_pr = 0;
             return true;
         }
-        
+
         if (m_blast_full && butil().is_bv(t)) {
             blast_bv_term(t, result, result_pr);
             return true;
         }
-        
+
         return false;
     }
 
-    bool reduce_quantifier(quantifier * old_q, 
-                           expr * new_body, 
-                           expr * const * new_patterns, 
+    bool reduce_quantifier(quantifier * old_q,
+                           expr * new_body,
+                           expr * const * new_patterns,
                            expr * const * new_no_patterns,
                            expr_ref & result,
                            proof_ref & result_pr) {
@@ -597,20 +622,20 @@ MK_PARAMETRIC_UNARY_REDUCE(reduce_sign_extend, mk_sign_extend);
     }
 };
 
-// CMW: GCC/LLVM do not like this definition because a symbol of the same name exists in assert_set_bit_blaster.o
-// template class rewriter_tpl<blaster_rewriter_cfg>;
-
 struct bit_blaster_rewriter::imp : public rewriter_tpl<blaster_rewriter_cfg> {
     blaster              m_blaster;
     blaster_rewriter_cfg m_cfg;
     imp(ast_manager & m, params_ref const & p):
-        rewriter_tpl<blaster_rewriter_cfg>(m, 
-                                           m.proofs_enabled(), 
+        rewriter_tpl<blaster_rewriter_cfg>(m,
+                                           m.proofs_enabled(),
                                            m_cfg),
         m_blaster(m),
         m_cfg(m, m_blaster, p) {
         SASSERT(m_blaster.butil().get_family_id() == m.get_family_id("bv"));
     }
+    void push() { m_cfg.push(); }
+    void pop(unsigned s) { m_cfg.pop(s); }
+    unsigned get_num_scopes() const { return m_cfg.get_num_scopes(); }
 };
 
 bit_blaster_rewriter::bit_blaster_rewriter(ast_manager & m, params_ref const & p):
@@ -625,9 +650,13 @@ void bit_blaster_rewriter::updt_params(params_ref const& p) {
     m_imp->m_cfg.updt_params(p);
 }
 
-void bit_blaster_rewriter::set_cancel(bool f) {
-    m_imp->set_cancel(f);
-    m_imp->m_blaster.set_cancel(f);
+
+void bit_blaster_rewriter::push() {
+    m_imp->push();
+}
+
+void bit_blaster_rewriter::pop(unsigned num_scopes) {
+    m_imp->pop(num_scopes);
 }
 
 ast_manager & bit_blaster_rewriter::m() const {
@@ -648,5 +677,9 @@ obj_map<func_decl, expr*> const & bit_blaster_rewriter::const2bits() const {
 
 void bit_blaster_rewriter::operator()(expr * e, expr_ref & result, proof_ref & result_proof) {
     m_imp->operator()(e, result, result_proof);
+}
+
+unsigned bit_blaster_rewriter::get_num_scopes() const {
+    return m_imp->get_num_scopes();
 }
 

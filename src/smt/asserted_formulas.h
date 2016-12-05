@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _ASSERTED_FORMULAS_H_
-#define _ASSERTED_FORMULAS_H_
+#ifndef ASSERTED_FORMULAS_H_
+#define ASSERTED_FORMULAS_H_
 
 #include"smt_params.h"
 #include"simplifier.h"
@@ -55,14 +55,12 @@ class asserted_formulas {
     maximise_bv_sharing         m_bv_sharing;
 
     bool                        m_inconsistent;
-    // qe::expr_quant_elim_star1   m_quant_elim;
 
     struct scope {
         unsigned                m_asserted_formulas_lim;
         bool                    m_inconsistent_old;
     };
     svector<scope>              m_scopes;
-    volatile bool               m_cancel_flag;
 
     void setup_simplifier_plugins(simplifier & s, basic_simplifier_plugin * & bsimp, arith_simplifier_plugin * & asimp, bv_simplifier_plugin * & bvsimp);
     void reduce_asserted_formulas();
@@ -85,7 +83,6 @@ class asserted_formulas {
     void eliminate_and();
     void refine_inj_axiom();
     bool cheap_quant_fourier_motzkin();
-    bool quant_elim();
     void apply_distribute_forall();
     bool apply_bit2int();
     void lift_ite();
@@ -97,7 +94,7 @@ class asserted_formulas {
     unsigned get_total_size() const;
     bool has_bv() const;
     void max_bv_sharing();
-    bool canceled() { return m_cancel_flag; }
+    bool canceled() { return m_manager.canceled(); }
 
 public:
     asserted_formulas(ast_manager & m, smt_params & p);
@@ -107,7 +104,6 @@ public:
     void assert_expr(expr * e, proof * in_pr);
     void assert_expr(expr * e);
     void reset();
-    void set_cancel_flag(bool f);
     void push_scope();
     void pop_scope(unsigned num_scopes);
     bool inconsistent() const { return m_inconsistent; }
@@ -117,6 +113,7 @@ public:
     unsigned get_formulas_last_level() const;
     unsigned get_qhead() const { return m_asserted_qhead; }
     void commit(); 
+    void commit(unsigned new_qhead); 
     expr * get_formula(unsigned idx) const { return m_asserted_formulas.get(idx); }
     proof * get_formula_proof(unsigned idx) const { return m_manager.proofs_enabled() ? m_asserted_formula_prs.get(idx) : 0; }
     expr * const * get_formulas() const { return m_asserted_formulas.c_ptr(); }
@@ -148,5 +145,5 @@ public:
 
 };
 
-#endif /* _ASSERTED_FORMULAS_H_ */
+#endif /* ASSERTED_FORMULAS_H_ */
 

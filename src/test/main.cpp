@@ -140,6 +140,10 @@ int main(int argc, char ** argv) {
     TST(ast);
     TST(optional);
     TST(bit_vector);
+    TST(fixed_bit_vector);
+    TST(tbv);
+    TST(doc);
+    TST(udoc_relation);
     TST(string_buffer);
     TST(map);
     TST(diff_logic);
@@ -182,6 +186,7 @@ int main(int argc, char ** argv) {
     TST(smt_context);
     TST(theory_dl);
     TST(model_retrieval);
+    TST(model_based_opt);
     TST(factor_rewriter);
     TST(smt2print_parse);
     TST(substitution);
@@ -216,6 +221,16 @@ int main(int argc, char ** argv) {
     TST(polynorm);
     TST(qe_arith);
     TST(expr_substitution);
+    TST(sorting_network);
+    TST(theory_pb);
+    TST(simplex);
+    TST(sat_user_scope);
+    TST(pdr);
+    TST_ARGV(ddnf);
+    TST(model_evaluator);
+    TST(get_consequences);
+    TST(pb2bv);
+    //TST_ARGV(hs);
 }
 
 void initialize_mam() {}

@@ -155,7 +155,7 @@ namespace smt {
         }
 
         virtual theory * mk_fresh(context * new_ctx) {
-            return alloc(theory_dl, get_manager());
+            return alloc(theory_dl, new_ctx->get_manager());
         }
 
         virtual void init_model(smt::model_generator & m) {
@@ -192,6 +192,9 @@ namespace smt {
                     }
                 }
             }
+        }
+
+        virtual void display(std::ostream & out) const {
         }
 
 
@@ -235,22 +238,34 @@ namespace smt {
         }
 
         app* mk_bv_constant(uint64 val, sort* s) {
-            return b().mk_numeral(rational(val,rational::ui64()),64);
+            return b().mk_numeral(rational(val, rational::ui64()), 64);
         }
 
         app* max_value(sort* s) {
             uint64 sz;
             VERIFY(u().try_get_size(s, sz));
-            return mk_bv_constant(sz, s);
+            SASSERT(sz > 0);
+            return mk_bv_constant(sz-1, s);
         }
 
         void mk_lt(app* x, app* y) {
             sort* s = m().get_sort(x);
             func_decl* r, *v;
             get_rep(s, r, v);
-            app* lt1 = u().mk_lt(x,y);
-            app* lt2 = m().mk_not(b().mk_ule(m().mk_app(r,y),m().mk_app(r,x))); 
-            assert_cnstr(m().mk_iff(lt1, lt2));
+            app_ref lt(m()), le(m());
+            lt = u().mk_lt(x,y);
+            le = b().mk_ule(m().mk_app(r,y),m().mk_app(r,x)); 
+            context& ctx = get_context();
+            ctx.internalize(lt, false);
+            ctx.internalize(le, false);
+            literal lit1(ctx.get_literal(lt));
+            literal lit2(ctx.get_literal(le));
+            ctx.mark_as_relevant(lit1);
+            ctx.mark_as_relevant(lit2);
+            literal lits1[2] = { lit1, lit2 };
+            literal lits2[2] = { ~lit1, ~lit2 };
+            ctx.mk_th_axiom(get_id(), 2, lits1);
+            ctx.mk_th_axiom(get_id(), 2, lits2);
         }
 
         void assert_cnstr(expr* e) {

@@ -17,8 +17,8 @@ Author:
 Notes:
 
 --*/
-#ifndef _EXPR2SUBPAVING_H_
-#define _EXPR2SUBPAVING_H_
+#ifndef EXPR2SUBPAVING_H_
+#define EXPR2SUBPAVING_H_
 
 #include"ast.h"
 #include"subpaving.h"
@@ -40,12 +40,7 @@ public:
        \brief Return true if t was encoded as a variable by the translator.
     */
     bool is_var(expr * t) const;
-    
-    /**
-       \brief Cancel/Interrupt execution.
-    */
-    void set_cancel(bool f);
-    
+       
     /**
        \brief Internalize a Z3 arithmetical expression into the subpaving data-structure.
 

@@ -21,7 +21,6 @@ Revision History:
 #include "expr_abstract.h"
 #include "used_vars.h"
 #include "occurs.h"
-#include "for_each_expr.h"
 #include "rewriter_def.h"
 #include "ast_pp.h"
 #include "ast_ll_pp.h"
@@ -30,7 +29,7 @@ Revision History:
 #include "bool_rewriter.h"
 #include "var_subst.h"
 #include "uint_set.h"
-#include "qe_util.h"
+#include "ast_util.h"
 #include "th_rewriter.h"
 #include "for_each_expr.h"
 #include "expr_safe_replace.h"
@@ -92,7 +91,6 @@ namespace eq {
         expr_ref_vector  m_subst_map;
         expr_ref_buffer  m_new_args;
         th_rewriter      m_rewriter;
-        volatile bool    m_cancel;
         
         void der_sort_vars(ptr_vector<var> & vars, ptr_vector<expr> & definitions, unsigned_vector & order) {
             order.reset();
@@ -238,67 +236,95 @@ namespace eq {
             }
         }
 
-        bool solve_arith_core(app * lhs, expr * rhs, expr * eq, ptr_vector<var>& vs, expr_ref_vector& ts) {
-            SASSERT(a.is_add(lhs));
-            bool is_int  = a.is_int(lhs);
-            expr * a1, *v;
-            expr_ref def(m);
-            rational a_val;
-            unsigned num = lhs->get_num_args();
-            unsigned i;
-            for (i = 0; i < num; i++) {
-                expr * arg = lhs->get_arg(i);
-                if (is_variable(arg)) {
-                    a_val = rational(1); 
-                    v     = arg;
-                    break;
-                }
-                else if (a.is_mul(arg, a1, v) && 
-                         is_variable(v) && 
-                         a.is_numeral(a1, a_val) &&
-                         !a_val.is_zero() &&
-                         (!is_int || a_val.is_minus_one())) {
-                    break;
+        bool is_invertible_const(bool is_int, expr* x, rational& a_val) {
+            expr* y;
+            if (a.is_uminus(x, y) && is_invertible_const(is_int, y, a_val)) {
+                a_val.neg();
+                return true;
+            }
+            else if (a.is_numeral(x, a_val) && !a_val.is_zero()) {
+                if (!is_int || a_val.is_one() || a_val.is_minus_one()) {
+                    return true;
                 }
             }
-            if (i == num)
-                return false;
-            vs.push_back(to_var(v));
-            expr_ref inv_a(m);
-            if (!a_val.is_one()) {
-                inv_a = a.mk_numeral(rational(1)/a_val, is_int);
-                rhs   = a.mk_mul(inv_a, rhs);
-            }
-            
-            ptr_buffer<expr> other_args;
-            for (unsigned j = 0; j < num; j++) {
-                if (i != j) {
-                    if (inv_a)
-                        other_args.push_back(a.mk_mul(inv_a, lhs->get_arg(j)));
-                    else
-                        other_args.push_back(lhs->get_arg(j));
-                }
-            }
-            switch (other_args.size()) {
-            case 0:
-                def = rhs;
-                break;
-            case 1:
-                def = a.mk_sub(rhs, other_args[0]);
-                break;
-            default:
-                def = a.mk_sub(rhs, a.mk_add(other_args.size(), other_args.c_ptr()));
-                break;
-            }
-            ts.push_back(def);
-            return true;
+            return false;
         }
 
+        bool is_invertible_mul(bool is_int, expr*& arg, rational& a_val) {
+            if (is_variable(arg)) {
+                a_val = rational(1);
+                return true;
+            }
+            expr* x, *y;
+            if (a.is_mul(arg, x, y)) {
+                if (is_variable(x) && is_invertible_const(is_int, y, a_val)) {
+                    arg = x;
+                    return true;
+                }
+                if (is_variable(y) && is_invertible_const(is_int, x, a_val)) {
+                    arg = y;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        typedef std::pair<bool,expr*> signed_expr;
+
+        expr_ref solve_arith(bool is_int, rational const& r, bool sign, svector<signed_expr> const& exprs) {
+            expr_ref_vector result(m);
+            for (unsigned i = 0; i < exprs.size(); ++i) {
+                bool sign2 = exprs[i].first;
+                expr* e    = exprs[i].second;
+                rational r2(r);
+                if (sign == sign2) {
+                    r2.neg();
+                }
+                if (!r2.is_one()) {
+                    result.push_back(a.mk_mul(a.mk_numeral(r2, is_int), e));
+                }
+                else {
+                    result.push_back(e);
+                }
+            }
+            return expr_ref(a.mk_add(result.size(), result.c_ptr()), m);
+        }
+
+        bool solve_arith(expr* lhs, expr* rhs, ptr_vector<var>& vs, expr_ref_vector& ts) {
+            if (!a.is_int(lhs) && !a.is_real(rhs)) {
+                return false;
+            }
+            rational a_val;
+            bool is_int = a.is_int(lhs);
+            svector<signed_expr> todo, done;
+            todo.push_back(std::make_pair(true,  lhs));
+            todo.push_back(std::make_pair(false, rhs));
+            while (!todo.empty()) {
+                expr* e = todo.back().second;
+                bool sign = todo.back().first;
+                todo.pop_back();
+                if (a.is_add(e)) {
+                    for (unsigned i = 0; i < to_app(e)->get_num_args(); ++i) {
+                        todo.push_back(std::make_pair(sign, to_app(e)->get_arg(i)));                        
+                    }
+                }
+                else if (is_invertible_mul(is_int, e, a_val)) {
+                    done.append(todo);
+                    vs.push_back(to_var(e));
+                    a_val = rational(1)/a_val;
+                    ts.push_back(solve_arith(is_int, a_val, sign, done));
+                    TRACE("qe_lite", tout << mk_pp(lhs, m) << " " << mk_pp(rhs, m) << " " << mk_pp(e, m) << " := " << mk_pp(ts.back(), m) << "\n";);
+                    return true;
+                }
+                else {
+                    done.push_back(std::make_pair(sign, e));
+                }
+            }
+            return false;
+        }
         
         bool arith_solve(expr * lhs, expr * rhs, expr * eq, ptr_vector<var>& vs, expr_ref_vector& ts) {
-            return 
-                (a.is_add(lhs) && solve_arith_core(to_app(lhs), rhs, eq, vs, ts)) ||
-                (a.is_add(rhs) && solve_arith_core(to_app(rhs), lhs, eq, vs, ts));
+            return solve_arith(lhs, rhs, vs, ts);
         }
 
         bool trivial_solve(expr* lhs, expr* rhs, expr* eq, ptr_vector<var>& vs, expr_ref_vector& ts) {
@@ -464,6 +490,10 @@ namespace eq {
                 if (x == -1 || m_map[x] == 0) {
                     m_new_args.push_back(args[i]);
                 }
+            }
+            if (m_new_args.size() == num_args) {
+                r = q;
+                return;
             }
             
             expr_ref t(m);
@@ -695,7 +725,7 @@ namespace eq {
                     m_subst(r, m_subst_map.size(), m_subst_map.c_ptr(), new_r);
                     m_rewriter(new_r);
                     conjs.reset();
-                    qe::flatten_and(new_r, conjs);
+                    flatten_and(new_r, conjs);
                     reduced = true;
                 }
             }
@@ -709,8 +739,8 @@ namespace eq {
 
         void checkpoint() {
             cooperate("der");
-            if (m_cancel)
-                throw tactic_exception(TACTIC_CANCELED_MSG);
+            if (m.canceled()) 
+                throw tactic_exception(m.limit().get_cancel_msg());
         }
 
     public:
@@ -723,8 +753,7 @@ namespace eq {
             m_new_exprs(m), 
             m_subst_map(m), 
             m_new_args(m), 
-            m_rewriter(m), 
-            m_cancel(false) {}
+            m_rewriter(m) {}
         
         void set_is_variable_proc(is_variable_proc& proc) { m_is_variable = &proc;}
         
@@ -746,7 +775,7 @@ namespace eq {
                 proof_ref curr_pr(m);
                 q  = to_quantifier(r);
                 reduce_quantifier1(q, r, curr_pr);
-                if (m.proofs_enabled()) {
+                if (m.proofs_enabled() && r != q) {
                     pr = m.mk_transitivity(pr, curr_pr);
                 }
             } while (q != r && is_quantifier(r));
@@ -761,10 +790,6 @@ namespace eq {
         
         ast_manager& get_manager() const { return m; }
 
-        void set_cancel(bool f) {
-            m_rewriter.set_cancel(f);
-            m_cancel = f;
-        }
 
     };
 }; // namespace eq
@@ -779,7 +804,6 @@ namespace ar {
         is_variable_proc*        m_is_variable;
         ptr_vector<expr>         m_todo;
         expr_mark                m_visited;
-        volatile bool            m_cancel;
         
         bool is_variable(expr * e) const {
             return (*m_is_variable)(e);
@@ -894,13 +918,13 @@ namespace ar {
 
         void checkpoint() {
             cooperate("der");
-            if (m_cancel)
-                throw tactic_exception(TACTIC_CANCELED_MSG);
-        }
+            if (m.canceled())
+                throw tactic_exception(m.limit().get_cancel_msg());
+    }
 
     public:
 
-        der(ast_manager& m): m(m), a(m), m_is_variable(0), m_cancel(false) {}
+        der(ast_manager& m): m(m), a(m), m_is_variable(0) {}
 
         void operator()(expr_ref_vector& fmls) {
             for (unsigned i = 0; i < fmls.size(); ++i) {
@@ -913,10 +937,6 @@ namespace ar {
         void operator()(expr* e) {}
 
         void set_is_variable_proc(is_variable_proc& proc) { m_is_variable = &proc;}
-
-        void set_cancel(bool f) {
-            m_cancel = f;
-        }
         
     };
 }; // namespace ar
@@ -1026,7 +1046,7 @@ namespace fm {
         arith_util               m_util;
         constraints              m_constraints;
         expr_ref_vector          m_bvar2expr;
-        char_vector              m_bvar2sign;
+        signed_char_vector       m_bvar2sign;
         obj_map<expr, bvar>      m_expr2bvar;
         char_vector              m_is_int;
         char_vector              m_forbidden;
@@ -1037,7 +1057,6 @@ namespace fm {
         vector<constraints>      m_uppers;
         uint_set                 m_forbidden_set; // variables that cannot be eliminated because occur in non OCC ineq part
         expr_ref_vector          m_new_fmls;
-        volatile bool            m_cancel;
         id_gen                   m_id_gen;
         bool                     m_fm_real_only;
         unsigned                 m_fm_limit;
@@ -1430,7 +1449,6 @@ namespace fm {
             m_var2expr(m),
             m_new_fmls(m),
             m_inconsistent_core(m) {
-            m_cancel = false;
             updt_params();
             m_counter = 0;
             m_inconsistent = false;
@@ -1449,9 +1467,6 @@ namespace fm {
             m_fm_occ         = true;
         }
         
-        void set_cancel(bool f) {
-            m_cancel = f;
-        }
     private:
         
         struct forbidden_proc {
@@ -1652,7 +1667,7 @@ namespace fm {
             sbuffer<var>     xs;
             buffer<rational> as;
             rational         c;
-            bool             strict;
+            bool             strict = false;
             unsigned         num;
             expr * const *   args;
             if (m.is_or(f)) {
@@ -2035,7 +2050,7 @@ namespace fm {
                 switch (m_bvar2sign[p]) {
                 case 0:
                     new_lits.push_back(lit);
-                break;
+                    break;
                 case -1:
                     if (!sign(lit))
                         tautology = true;
@@ -2193,8 +2208,8 @@ namespace fm {
         
         void checkpoint() {
             cooperate("fm");
-            if (m_cancel)
-                throw tactic_exception(TACTIC_CANCELED_MSG);
+            if (m.canceled())
+                throw tactic_exception(m.limit().get_cancel_msg());
         }
     public:
 
@@ -2286,7 +2301,7 @@ public:
             }
             m_imp(indices, true, result);          
             if (is_forall(q)) {
-                result = m.mk_not(result);
+                result = push_not(result);
             }
             result = m.update_quantifier(
                 q, 
@@ -2386,7 +2401,7 @@ public:
 
     void operator()(uint_set const& index_set, bool index_of_bound, expr_ref& fml) {
         expr_ref_vector disjs(m);
-        qe::flatten_or(fml, disjs);
+        flatten_or(fml, disjs);
         for (unsigned i = 0; i < disjs.size(); ++i) {
             expr_ref_vector conjs(m);
             conjs.push_back(disjs[i].get());
@@ -2399,7 +2414,7 @@ public:
 
 
     void operator()(uint_set const& index_set, bool index_of_bound, expr_ref_vector& fmls) {
-        qe::flatten_and(fmls);
+        flatten_and(fmls);
         unsigned index;
         if (has_unique_non_ground(fmls, index)) {
             expr_ref fml(m);
@@ -2411,9 +2426,6 @@ public:
         TRACE("qe_lite", for (unsigned i = 0; i < fmls.size(); ++i) {
                 tout << mk_pp(fmls[i].get(), m) << "\n";
             });
-        IF_VERBOSE(3, for (unsigned i = 0; i < fmls.size(); ++i) {
-                verbose_stream() << mk_pp(fmls[i].get(), m) << "\n";
-            });
         is_variable_test is_var(index_set, index_of_bound);
         m_der.set_is_variable_proc(is_var);
         m_fm.set_is_variable_proc(is_var);
@@ -2422,14 +2434,6 @@ public:
         m_fm(fmls);
         m_array_der(fmls);
         TRACE("qe_lite", for (unsigned i = 0; i < fmls.size(); ++i) tout << mk_pp(fmls[i].get(), m) << "\n";);
-    }
-
-    void set_cancel(bool f) {
-        m_der.set_cancel(f);
-        m_array_der.set_cancel(f);
-        m_fm.set_cancel(f);
-        m_elim_star.set_cancel(f);
-        m_rewriter.set_cancel(f);
     }
 
 };
@@ -2446,9 +2450,6 @@ void qe_lite::operator()(app_ref_vector& vars, expr_ref& fml) {
     (*m_impl)(vars, fml);
 }
 
-void qe_lite::set_cancel(bool f) {
-    m_impl->set_cancel(f);
-}
 
 void qe_lite::operator()(expr_ref& fml, proof_ref& pr) {
     (*m_impl)(fml, pr);
@@ -2467,25 +2468,53 @@ class qe_lite_tactic : public tactic {
     struct imp {
         ast_manager&             m;
         qe_lite                  m_qe;
-        volatile bool            m_cancel;
 
         imp(ast_manager& m, params_ref const& p): 
             m(m),
-            m_qe(m),
-            m_cancel(false)
+            m_qe(m)
         {}
 
-        void set_cancel(bool f) {
-            m_cancel = f;
-            m_qe.set_cancel(f);
-        }
-
         void checkpoint() {
-            if (m_cancel)
-                throw tactic_exception(TACTIC_CANCELED_MSG);
+            if (m.canceled())
+                throw tactic_exception(m.limit().get_cancel_msg());
             cooperate("qe-lite");
         }
         
+        void debug_diff(expr* a, expr* b) {
+            ptr_vector<expr> as, bs;
+            as.push_back(a);
+            bs.push_back(b);
+            expr* a1, *a2, *b1, *b2;
+            while (!as.empty()) {
+                a = as.back();
+                b = bs.back();
+                as.pop_back();
+                bs.pop_back();
+                if (a == b) {
+                    continue;
+                }
+                else if (is_forall(a) && is_forall(b)) {
+                    as.push_back(to_quantifier(a)->get_expr());
+                    bs.push_back(to_quantifier(b)->get_expr());
+                }
+                else if (m.is_and(a, a1, a2) && m.is_and(b, b1, b2)) {
+                    as.push_back(a1);
+                    as.push_back(a2);
+                    bs.push_back(b1);
+                    bs.push_back(b2);
+                }
+                else if (m.is_eq(a, a1, a2) && m.is_eq(b, b1, b2)) {
+                    as.push_back(a1);
+                    as.push_back(a2);
+                    bs.push_back(b1);
+                    bs.push_back(b2);
+                }
+                else {
+                    TRACE("qe", tout << mk_pp(a, m) << " != " << mk_pp(b, m) << "\n";);
+                }
+            }
+        }
+
         void operator()(goal_ref const & g, 
                         goal_ref_buffer & result, 
                         model_converter_ref & mc, 
@@ -2517,7 +2546,10 @@ class qe_lite_tactic : public tactic {
                         new_pr = g->pr(i);
                     }
                 }
-                g->update(i, new_f, new_pr, g->dep(i));                
+                if (f != new_f) {
+                    TRACE("qe", tout << mk_pp(f, m) << "\n" << new_f << "\n";);
+                    g->update(i, new_f, new_pr, g->dep(i));                
+                }
             }
             g->inc_depth();
             result.push_back(g.get());
@@ -2574,17 +2606,8 @@ public:
     
     virtual void cleanup() {
         ast_manager & m = m_imp->m;
-        imp * d = m_imp;
-        #pragma omp critical (tactic_cancel)
-        {
-            m_imp = 0;
-        }
-        dealloc(d);
-        d = alloc(imp, m, m_params);
-        #pragma omp critical (tactic_cancel)
-        {
-            m_imp = d;
-        }
+        dealloc(m_imp);
+        m_imp = alloc(imp, m, m_params);
     }
     
 };

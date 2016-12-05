@@ -16,24 +16,14 @@ Author:
 Notes:
 
 --*/
-#ifndef _BV_REWRITER_H_
-#define _BV_REWRITER_H_
+#ifndef BV_REWRITER_H_
+#define BV_REWRITER_H_
 
 #include"poly_rewriter.h"
 #include"bv_decl_plugin.h"
 #include"arith_decl_plugin.h"
-
-class mk_extract_proc {
-    bv_util &     m_util;
-    unsigned      m_high;
-    unsigned      m_low;
-    sort *        m_domain;
-    func_decl *   m_f_cached;
-public:
-    mk_extract_proc(bv_util & u);
-    ~mk_extract_proc();
-    app * operator()(unsigned high, unsigned low, expr * arg);
-};
+#include"mk_extract_proc.h"
+#include"bv_trailing.h"
 
 class bv_rewriter_core {
 protected:
@@ -58,6 +48,7 @@ public:
 
 class bv_rewriter : public poly_rewriter<bv_rewriter_core> {
     mk_extract_proc m_mk_extract;
+    bv_trailing     m_rm_trailing;
     arith_util m_autil;
     bool       m_hi_div0;
     bool       m_elim_sign_ext;
@@ -65,10 +56,16 @@ class bv_rewriter : public poly_rewriter<bv_rewriter_core> {
     bool       m_bit2bool;
     bool       m_blast_eq_value;
     bool       m_mkbv2num;
+    bool       m_ite2id;
     bool       m_split_concat_eq;
     bool       m_udiv2mul;
     bool       m_bvnot2arith;
     bool       m_bv_sort_ac;
+    bool       m_trailing;
+    bool       m_extract_prop;
+    bool       m_bvnot_simpl;
+    bool       m_le_extra;
+    bool       m_urem_simpl;
 
     bool is_zero_bit(expr * x, unsigned idx);
 
@@ -78,13 +75,18 @@ class bv_rewriter : public poly_rewriter<bv_rewriter_core> {
     br_status mk_sle(expr * a, expr * b, expr_ref & result);
     br_status mk_sge(expr * a, expr * b, expr_ref & result);
     br_status mk_slt(expr * a, expr * b, expr_ref & result);
+    br_status rw_leq_concats(bool is_signed, expr * a, expr * b, expr_ref & result);
+    bool are_eq_upto_num(expr * a, expr * b, expr_ref& common, numeral& a0_val, numeral& b0_val);
+    br_status rw_leq_overflow(bool is_signed, expr * _a, expr * _b, expr_ref & result);
     br_status mk_leq_core(bool is_signed, expr * a, expr * b, expr_ref & result);
 
     br_status mk_concat(unsigned num_args, expr * const * args, expr_ref & result);
+    unsigned propagate_extract(unsigned high,  expr * arg, expr_ref & result);
     br_status mk_extract(unsigned high, unsigned low, expr * arg, expr_ref & result);
     br_status mk_repeat(unsigned n, expr * arg, expr_ref & result);
     br_status mk_zero_extend(unsigned n, expr * arg, expr_ref & result);
     br_status mk_sign_extend(unsigned n, expr * arg, expr_ref & result);
+    bool is_negatable(expr * arg, expr_ref& x);
     br_status mk_bv_not(expr * arg, expr_ref & result);
     br_status mk_bv_or(unsigned num, expr * const * args, expr_ref & result);
     br_status mk_bv_xor(unsigned num, expr * const * args, expr_ref & result);
@@ -131,19 +133,28 @@ class bv_rewriter : public poly_rewriter<bv_rewriter_core> {
     br_status mk_blast_eq_value(expr * lhs, expr * rhs, expr_ref & result);
     br_status mk_eq_concat(expr * lhs, expr * rhs, expr_ref & result);
     br_status mk_mkbv(unsigned num, expr * const * args, expr_ref & result);
+    br_status mk_bvsmul_no_overflow(unsigned num, expr * const * args, expr_ref & result);
+    br_status mk_bvumul_no_overflow(unsigned num, expr * const * args, expr_ref & result);
+    br_status mk_bvsmul_no_underflow(unsigned num, expr * const * args, expr_ref & result);
     bool is_minus_one_times_t(expr * arg);
     void mk_t1_add_t2_eq_c(expr * t1, expr * t2, expr * c, expr_ref & result);
 
     bool is_concat_split_target(expr * t) const;
 
     br_status mk_mul_eq(expr * lhs, expr * rhs, expr_ref & result);
+    bool is_add_mul_const(expr* e) const;
+    bool isolate_term(expr* lhs, expr* rhs, expr_ref & result);
+    bool has_numeral(app* e) const;
+    bool is_concat_target(expr* lhs, expr* rhs) const;
 
     void updt_local_params(params_ref const & p);
 
+    expr * concat(unsigned num_args, expr * const * args);
 public:
     bv_rewriter(ast_manager & m, params_ref const & p = params_ref()):
         poly_rewriter<bv_rewriter_core>(m, p),
         m_mk_extract(m_util),
+        m_rm_trailing(m_mk_extract),
         m_autil(m) {
         updt_local_params(p);
     }
@@ -151,7 +162,7 @@ public:
     void updt_params(params_ref const & p);
 
     static void get_param_descrs(param_descrs & r);
-    
+
     void set_mkbv2num(bool f) { m_mkbv2num = f; }
 
     unsigned get_bv_size(expr * t) const {return m_util.get_bv_size(t); }
@@ -160,14 +171,20 @@ public:
     bool is_bv(expr * t) const { return m_util.is_bv(t); }
     expr * mk_numeral(numeral const & v, unsigned sz) { return m_util.mk_numeral(v, sz); }
     expr * mk_numeral(unsigned v, unsigned sz) { return m_util.mk_numeral(numeral(v), sz); }
-    
+
     br_status mk_app_core(func_decl * f, unsigned num_args, expr * const * args, expr_ref & result);
     void mk_app(func_decl * f, unsigned num_args, expr * const * args, expr_ref & result) {
         if (mk_app_core(f, num_args, args, result) == BR_FAILED)
             result = m().mk_app(f, num_args, args);
     }
 
+    bool is_urem_any(expr * e, expr * & dividend,  expr * & divisor);
     br_status mk_eq_core(expr * lhs, expr * rhs, expr_ref & result);
+    br_status mk_ite_core(expr * c, expr * t, expr * e, expr_ref & resul);
+
+    bool hi_div0() const { return m_hi_div0; }
+
+    bv_util & get_util() { return m_util; }
 };
 
 #endif

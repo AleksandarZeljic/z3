@@ -18,8 +18,8 @@ Author:
 Notes:
 
 --*/
-#ifndef _TACTIC_H_
-#define _TACTIC_H_
+#ifndef TACTIC_H_
+#define TACTIC_H_
 
 #include"goal.h"
 #include"params.h"
@@ -44,9 +44,6 @@ public:
 
     virtual void updt_params(params_ref const & p) {}
     virtual void collect_param_descrs(param_descrs & r) {}
-
-    void cancel();
-    void reset_cancel();
     
     /**
        \brief Apply tactic to goal \c in.
@@ -95,12 +92,11 @@ public:
 
     // translate tactic to the given manager
     virtual tactic * translate(ast_manager & m) = 0;
-private:
+protected:
     friend class nary_tactical;
     friend class binary_tactical;
     friend class unary_tactical;
-
-    virtual void set_cancel(bool f) {}
+    friend class nl_purify_tactic;
 
 };
 

@@ -55,7 +55,7 @@
 // #define KEEP_EXPANSIONS
 // #define USE_CACHING_RPFP
 // #define PROPAGATE_BEFORE_CHECK
-#define NEW_STRATIFIED_INLINING	
+#define NEW_STRATIFIED_INLINING
 
 #define USE_RPFP_CLONE
 #define USE_NEW_GEN_CANDS
@@ -389,7 +389,7 @@ namespace Duality {
                 else InstantiateAllEdges();
             }
             else {
-#ifdef NEW_STRATIFIED_INLINING	
+#ifdef NEW_STRATIFIED_INLINING
 
 #else
                 CreateLeaves();
@@ -929,7 +929,7 @@ namespace Duality {
     
         int StratifiedLeafCount;
 
-#ifdef NEW_STRATIFIED_INLINING	
+#ifdef NEW_STRATIFIED_INLINING
 
         /** Stratified inlining builds an initial layered unwinding before
             switching to the LAWI strategy. Currently the number of layers
@@ -1135,7 +1135,6 @@ namespace Duality {
                 conj = rpfp->conjoin(conjs);
             }
         }
-	
 
         Node *CreateUnderapproxNode(Node *node){
             // cex.get_tree()->ComputeUnderapprox(cex.get_root(),0);
@@ -1872,7 +1871,7 @@ namespace Duality {
                underapproximations as upper bounds. This mode is used to
                complete the partial derivation constructed in underapprox
                mode.
-            */	 
+            */
 
             bool Derive(RPFP *rpfp, RPFP::Node *root, bool _underapprox, bool _constrained = false, RPFP *_tree = 0){
                 underapprox = _underapprox;
@@ -2066,7 +2065,7 @@ namespace Duality {
                 if(!top->Outgoing || tree->Check(top,unused_set) == unsat){
                     unused_set.resize(orig_unused);
                     if(to - from == 1){
-#if 1	    
+#if 1
                         std::cout << "Not using underapprox of " << used_set[from] ->number << std::endl;
 #endif
                         choices.insert(used_set[from]);
@@ -2250,14 +2249,14 @@ namespace Duality {
                             throw "stacks out of sync!";
                         reporter->Depth(stack.size());
 
-                        //	  res = tree->Solve(top, 1);            // incremental solve, keep interpolants for one pop
+                        //   res = tree->Solve(top, 1);            // incremental solve, keep interpolants for one pop
                         check_result foo = Check();
                         res = foo == unsat ? l_false : l_true;
 
                         if (res == l_false) {
                             if (stack.empty()) // should never happen
                                 return false;
-	    
+
                             {
                                 std::vector<Node *> &expansions = stack.back().expansions;
                                 int update_count = 0;
@@ -2295,6 +2294,10 @@ namespace Duality {
                                         // bad interpolants can get us here
                                         reporter->Message(std::string("interpolation failure:") + msg);
                                         throw DoRestart();
+                                    }
+                                    catch(const RPFP::greedy_reduce_failed &){
+                                        // if we couldn't reduce, just continue (maybe should restart?)
+                                        reporter->Message("interpolant verification failed");
                                     }
                                     if(RecordUpdate(node)){
                                         update_count++;
@@ -2384,7 +2387,7 @@ namespace Duality {
                             tree->Pop(1);
                             node_order.clear();
                             while(stack.size() > 1){
-                                tree->Pop(1);	
+                                tree->Pop(1);
                                 std::vector<Node *> &expansions = stack.back().expansions;
                                 for(unsigned i = 0; i < expansions.size(); i++)
                                     node_order.push_back(expansions[i]);
@@ -2420,12 +2423,12 @@ namespace Duality {
 
             void PopLevel(){
                 std::vector<Node *> &expansions = stack.back().expansions;
-                tree->Pop(1);	
+                tree->Pop(1);
                 hash_set<Node *> leaves_to_remove;
                 for(unsigned i = 0; i < expansions.size(); i++){
                     Node *node = expansions[i];
-                    //	      if(node != top)
-                    //		tree->ConstrainParent(node->Incoming[0],node);
+                    //      if(node != top)
+                    //tree->ConstrainParent(node->Incoming[0],node);
                     std::vector<Node *> &cs = node->Outgoing->Children;
                     for(unsigned i = 0; i < cs.size(); i++){
                         leaves_to_remove.insert(cs[i]);
@@ -2441,7 +2444,7 @@ namespace Duality {
                 }
                 stack.pop_back();
             }
-	
+
             bool NodeTooComplicated(Node *node){
                 int ops = tree->CountOperators(node->Annotation.Formula);
                 if(ops > 10) return true;
@@ -2670,7 +2673,7 @@ namespace Duality {
                         }
                     }
                 }
-#endif	
+#endif
 
             }
       
@@ -2732,7 +2735,7 @@ namespace Duality {
                     return false;
                 if(parent->underapprox_map.find(covering) != parent->underapprox_map.end())
                     return covering->number < covered->number || parent->underapprox_map[covering] == covered;
-#endif	
+#endif
                 return covering->number < covered->number;
             }
 
@@ -2778,7 +2781,7 @@ namespace Duality {
                 else
                     return false;
             }
-#endif	
+#endif
 
             bool Close(Node *node){
                 if(covered_by(node))
@@ -2842,7 +2845,7 @@ namespace Duality {
 #ifdef UNDERAPPROX_NODES
                 // if(parent->underapprox_map.find(covering) != parent->underapprox_map.end())
                 // return parent->underapprox_map[covering] == covered;
-#endif	
+#endif
                 if(CoverOrder(covering,covered) 
                    && !IsCovered(covering)){
                     RPFP::Transformer f(covering->Annotation); f.SetEmpty();
@@ -3175,7 +3178,7 @@ namespace Duality {
                     // else
                     //  std::cout << "constant not matched\n";
                 }
-	
+
                 RPFP *old_unwinding = old_solver->unwinding;
                 hash_map<std::string, std::vector<Node *> > pred_match;
 
@@ -3454,7 +3457,7 @@ namespace Duality {
                     arg_sorts.push_back(params[j].get_sort());
                 arg_sorts.push_back(ctx.int_sort());
                 std::string new_name = std::string("@db@") + node->Name.name().str();
-                func_decl f = ctx.function(new_name.c_str(),arg_sorts.size(), &arg_sorts[0],ctx.bool_sort());
+                func_decl f = ctx.function(new_name.c_str(),arg_sorts.size(), VEC2PTR(arg_sorts),ctx.bool_sort());
                 std::vector<expr> args = params;
                 args.push_back(dvar);
                 expr pat = f(args);
@@ -3467,7 +3470,7 @@ namespace Duality {
                     dnode->Bound.Formula = bound_fmla;
                 }
                 db_saved_bounds.push_back(bound_fmla);
-                //	dnode->Annotation.Formula = ctx.make(And,node->Annotation.Formula,ctx.make(Geq,dvar,ctx.int_val(0)));
+                // dnode->Annotation.Formula = ctx.make(And,node->Annotation.Formula,ctx.make(Geq,dvar,ctx.int_val(0)));
             }
             for(unsigned i = 0; i < rpfp->edges.size(); i++){
                 Edge *edge = rpfp->edges[i];

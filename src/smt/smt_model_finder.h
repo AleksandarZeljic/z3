@@ -43,13 +43,15 @@ Author:
 Revision History:
 
 --*/
-#ifndef _SMT_MODEL_FINDER_H_
-#define _SMT_MODEL_FINDER_H_
+#ifndef SMT_MODEL_FINDER_H_
+#define SMT_MODEL_FINDER_H_
 
 #include"ast.h"
 #include"func_decl_dependencies.h"
 #include"simplifier.h"
 #include"proto_model.h"
+#include"cooperate.h"
+#include"tactic_exception.h"
 
 namespace smt {
     class context;
@@ -101,6 +103,8 @@ namespace smt {
         void process_non_auf_macros(ptr_vector<quantifier> & qs, ptr_vector<quantifier> & residue, proto_model * m);
         void process_auf(ptr_vector<quantifier> const & qs, proto_model * m);
         instantiation_set const * get_uvar_inst_set(quantifier * q, unsigned i) const;
+        void checkpoint();
+
 
     public:
         model_finder(ast_manager & m, simplifier & s);
@@ -119,6 +123,8 @@ namespace smt {
         bool restrict_sks_to_inst_set(context * aux_ctx, quantifier * q, expr_ref_vector const & sks);
 
         void restart_eh();
+
+        void checkpoint(char const* component);
     };
 };
 

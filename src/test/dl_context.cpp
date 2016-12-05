@@ -1,3 +1,9 @@
+
+/*++
+Copyright (c) 2015 Microsoft Corporation
+
+--*/
+
 #include "datalog_parser.h"
 #include "ast_pp.h"
 #include "arith_decl_plugin.h"
@@ -56,8 +62,9 @@ void dl_context_saturate_file(params_ref & params, const char * f) {
     ctx.updt_params(params);
 
     datalog::parser * parser = datalog::parser::create(ctx, m);
-    if (!parser->parse_file(f)) {
+    if (!parser || !parser->parse_file(f)) {
         warning_msg("ERROR: failed to parse file");
+        dealloc(parser);
         return;
     }
     dealloc(parser);
@@ -70,6 +77,8 @@ void tst_dl_context() {
     symbol relations[] = { symbol("tr_skip"), symbol("tr_sparse"), symbol("tr_hashtable"), symbol("smt_relation2")  };
     const unsigned rel_cnt = sizeof(relations)/sizeof(symbol);
 
+    return;
+#if 0
     const char * test_file = "c:\\tvm\\src\\benchmarks\\datalog\\t0.datalog";
 
     params_ref params;
@@ -84,7 +93,7 @@ void tst_dl_context() {
             dl_context_saturate_file(params, test_file);
         }
     }
-
+#endif
 }
 
 

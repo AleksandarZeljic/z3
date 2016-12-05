@@ -11,7 +11,7 @@ Abstract:
 
 Author:
 
-    Leonardo de Moura (leonardo) 2010-05-20.
+    Krystof Hoder 2010-05-20.
 
 Revision History:
 
@@ -102,7 +102,7 @@ namespace datalog {
                in the pair, and so it should be removed.
              */
             bool remove_rule(rule * r, unsigned original_length) {
-                TRUSTME( remove_from_vector(m_rules, r) );
+                VERIFY( remove_from_vector(m_rules, r) );
                 if (original_length>2) {
                     SASSERT(m_consumers>0);
                     m_consumers--;
@@ -114,22 +114,23 @@ namespace datalog {
             pair_info & operator=(const pair_info &); //to avoid the implicit one
         };
         typedef std::pair<app*, app*> app_pair;
-        typedef map<app_pair, pair_info *, 
-            pair_hash<obj_ptr_hash<app>, obj_ptr_hash<app> >, default_eq<app_pair> > cost_map;
+        typedef pair_hash<obj_ptr_hash<app>, obj_ptr_hash<app> > app_pair_hash;
+        typedef map<app_pair, pair_info *, app_pair_hash, default_eq<app_pair> > cost_map;
         typedef map<rule *, ptr_vector<app>, ptr_hash<rule>, ptr_eq<rule> > rule_pred_map;
+        typedef ptr_hashtable<rule, rule_hash_proc, default_eq<rule *> > rule_hashtable;
 
-        context & m_context;
-        ast_manager & m;
-        rule_manager & rm;
-        var_subst & m_var_subst;
-        rule_set & m_rs_aux_copy; //reference to a rule_set that will allow to ask for stratum levels
+        context &       m_context;
+        ast_manager &   m;
+        rule_manager &  rm;
+        var_subst &     m_var_subst;
+        rule_set &      m_rs_aux_copy; //reference to a rule_set that will allow to ask for stratum levels
 
-        cost_map m_costs;
-        ptr_vector<app> m_interpreted;
-        rule_pred_map m_rules_content;
-        rule_ref_vector m_introduced_rules;
-        ptr_hashtable<rule, ptr_hash<rule>, ptr_eq<rule> > m_modified_rules;
-
+        cost_map          m_costs;
+        ptr_vector<app>   m_interpreted;
+        rule_pred_map     m_rules_content;
+        rule_ref_vector   m_introduced_rules;
+        bool              m_modified_rules;
+        
         ast_ref_vector m_pinned;
         mutable ptr_vector<sort> m_vars;
 
@@ -140,6 +141,7 @@ namespace datalog {
               m_var_subst(ctx.get_var_subst()),
               m_rs_aux_copy(rs_aux_copy), 
               m_introduced_rules(ctx.get_rule_manager()),
+              m_modified_rules(false),
               m_pinned(ctx.get_manager())
         {
         }
@@ -248,20 +250,13 @@ namespace datalog {
             m_var_subst(t2, norm_subst.size(), norm_subst.c_ptr(), t2n_ref);
             app * t1n = to_app(t1n_ref);
             app * t2n = to_app(t2n_ref);
-            if (t1n>t2n) {
+            if (t1n->get_id() > t2n->get_id()) {
                 std::swap(t1n, t2n);
             }
+
             m_pinned.push_back(t1n);
             m_pinned.push_back(t2n);
             
-            /*
-              IF_VERBOSE(0,
-              print_renaming(norm_subst, verbose_stream());
-              display_predicate(m_context, t1, verbose_stream());
-              display_predicate(m_context, t2, verbose_stream());
-              display_predicate(m_context, t1n, verbose_stream());
-              display_predicate(m_context, t2n, verbose_stream()););
-            */
             return app_pair(t1n, t2n);
         }
 
@@ -301,13 +296,10 @@ namespace datalog {
 
         }
 
-        pair_info & get_pair(app_pair key) const {
-            return *m_costs.find(key);
-        }
-
         void remove_rule_from_pair(app_pair key, rule * r, unsigned original_len) {
-            pair_info * ptr = &get_pair(key);
-            if (ptr->remove_rule(r, original_len)) {
+            pair_info * ptr = 0;
+            if (m_costs.find(key, ptr) && ptr &&
+                ptr->remove_rule(r, original_len)) {
                 SASSERT(ptr->m_rules.empty());
                 m_costs.remove(key);
                 dealloc(ptr);
@@ -316,7 +308,7 @@ namespace datalog {
 
         void register_rule(rule * r) {
             rule_counter counter;
-            counter.count_rule_vars(m, r, 1);
+            counter.count_rule_vars(r, 1);
 
             ptr_vector<app> & rule_content = 
                 m_rules_content.insert_if_not_there2(r, ptr_vector<app>())->get_data().m_value;
@@ -326,22 +318,22 @@ namespace datalog {
             for(unsigned i=0; i<pos_tail_size; i++) {
                 rule_content.push_back(r->get_tail(i));
             }
-            for(unsigned i=0; i<pos_tail_size; i++) {
+            for(unsigned i=0; i+1 < pos_tail_size; i++) {
                 app * t1 = r->get_tail(i);
                 var_idx_set t1_vars = rm.collect_vars(t1);
-                counter.count_vars(m, t1, -1);  //temporarily remove t1 variables from counter
+                counter.count_vars(t1, -1);  //temporarily remove t1 variables from counter
                 for(unsigned j=i+1; j<pos_tail_size; j++) {
                     app * t2 = r->get_tail(j);
-                    counter.count_vars(m, t2, -1);  //temporarily remove t2 variables from counter
+                    counter.count_vars(t2, -1);  //temporarily remove t2 variables from counter
                     var_idx_set scope_vars = rm.collect_vars(t2);
                     scope_vars |= t1_vars;
                     var_idx_set non_local_vars;
                     counter.collect_positive(non_local_vars);
-                    counter.count_vars(m, t2, 1);  //restore t2 variables in counter
+                    counter.count_vars(t2, 1);  //restore t2 variables in counter
                     set_intersection(non_local_vars, scope_vars);
                     register_pair(t1, t2, r, non_local_vars);
                 }
-                counter.count_vars(m, t1, 1);  //restore t1 variables in counter
+                counter.count_vars(t1, 1);  //restore t1 variables in counter
             }
         }
 
@@ -362,7 +354,12 @@ namespace datalog {
         void join_pair(app_pair pair_key) {
             app * t1 = pair_key.first;
             app * t2 = pair_key.second;
-            pair_info & inf = get_pair(pair_key);
+            pair_info* infp = 0;
+            if (!m_costs.find(pair_key, infp) || !infp) {
+                UNREACHABLE();
+                return;
+            }            
+            pair_info & inf = *infp;
             SASSERT(!inf.m_rules.empty());
             var_idx_set & output_vars = inf.m_all_nonlocal_vars;
             expr_ref_vector args(m);
@@ -390,7 +387,7 @@ namespace datalog {
             func_decl* parent_head = one_parent->get_decl();
             const char * one_parent_name = parent_head->get_name().bare_str();
             std::string parent_name;
-            if (inf.m_rules.size()>1) {
+            if (inf.m_rules.size() > 1) {
                 parent_name = one_parent_name + std::string("_and_") + to_string(inf.m_rules.size()-1);
             }
             else {
@@ -415,15 +412,16 @@ namespace datalog {
             //here we copy the inf.m_rules vector because inf.m_rules will get changed 
             //in the iteration. Also we use hashtable instead of vector because we do 
             //not want to process one rule twice.
-            typedef ptr_hashtable<rule, ptr_hash<rule>, default_eq<rule *> > rule_hashtable;
-            rule_hashtable relevant_rules;
-            insert_into_set(relevant_rules, inf.m_rules);
-            rule_hashtable::iterator rit = relevant_rules.begin();
-            rule_hashtable::iterator rend = relevant_rules.end();
-            for(; rit!=rend; ++rit) {
-                apply_binary_rule(*rit, pair_key, head);
-            }
 
+            rule_hashtable processed_rules;
+            rule_vector rules(inf.m_rules);
+            for (unsigned i = 0; i < rules.size(); ++i) {
+                rule* r = rules[i];
+                if (!processed_rules.contains(r)) {
+                    apply_binary_rule(r, pair_key, head);
+                    processed_rules.insert(r);
+                }
+            }
             // SASSERT(!m_costs.contains(pair_key));
         }
 
@@ -460,16 +458,16 @@ namespace datalog {
             app * head = r->get_head();
 
             var_counter counter;
-            counter.count_vars(m, head, 1);
+            counter.count_vars(head, 1);
 
             unsigned tail_size=r->get_tail_size();
             unsigned pos_tail_size=r->get_positive_tail_size();
 
             for(unsigned i=pos_tail_size; i<tail_size; i++) {
-                counter.count_vars(m, r->get_tail(i), 1);
+                counter.count_vars(r->get_tail(i), 1);
             }
             for(unsigned i=0; i<len; i++) {
-                counter.count_vars(m, rule_content[i], 1);
+                counter.count_vars(rule_content[i], 1);
             }
 
             //add edges that contain added tails
@@ -477,7 +475,7 @@ namespace datalog {
                 app * a_tail = added_tails.back();  //added tail
 
                 var_idx_set a_tail_vars = rm.collect_vars(a_tail);
-                counter.count_vars(m, a_tail, -1);  //temporarily remove a_tail variables from counter
+                counter.count_vars(a_tail, -1);  //temporarily remove a_tail variables from counter
 
                 for(unsigned i=0; i<len; i++) {
                     app * o_tail = rule_content[i]; //other tail
@@ -486,17 +484,17 @@ namespace datalog {
                         continue;
                     }
 
-                    counter.count_vars(m, o_tail, -1);  //temporarily remove o_tail variables from counter
+                    counter.count_vars(o_tail, -1);  //temporarily remove o_tail variables from counter
                     var_idx_set scope_vars = rm.collect_vars(o_tail);
                     scope_vars |= a_tail_vars;
                     var_idx_set non_local_vars;
                     counter.collect_positive(non_local_vars);
-                    counter.count_vars(m, o_tail, 1);  //restore o_tail variables in counter
+                    counter.count_vars(o_tail, 1);  //restore o_tail variables in counter
                     set_intersection(non_local_vars, scope_vars);
 
                     register_pair(o_tail, a_tail, r, non_local_vars);
                 }
-                counter.count_vars(m, a_tail, 1);  //restore t1 variables in counter
+                counter.count_vars(a_tail, 1);  //restore t1 variables in counter
                 added_tails.pop_back();
             }
         }
@@ -551,7 +549,7 @@ namespace datalog {
             }
             SASSERT(!removed_tails.empty());
             SASSERT(!added_tails.empty());
-            m_modified_rules.insert(r);
+            m_modified_rules = true;
             replace_edges(r, removed_tails, added_tails, rule_content);
         }
 
@@ -703,7 +701,7 @@ namespace datalog {
                 join_pair(selected);
             }
 
-            if (m_modified_rules.empty()) {
+            if (!m_modified_rules) {
                 return 0;
             }
             rule_set * result = alloc(rule_set, m_context);

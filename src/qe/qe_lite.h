@@ -18,8 +18,8 @@ Revision History:
 
 --*/
 
-#ifndef __QE_LITE_H__
-#define __QE_LITE_H__
+#ifndef QE_LITE_H_
+#define QE_LITE_H_
 
 #include "ast.h"
 #include "uint_set.h"
@@ -59,8 +59,6 @@ public:
         \brief full rewriting based light-weight quantifier elimination round.
     */
     void operator()(expr_ref& fml, proof_ref& pr);
-
-    void set_cancel(bool f);
 };
 
 tactic * mk_qe_lite_tactic(ast_manager & m, params_ref const & p = params_ref());

@@ -27,6 +27,7 @@ context_params::context_params() {
     m_unsat_core     = false;
     m_model          = true;
     m_model_validate = false;
+    m_dump_models    = false;
     m_auto_config    = true;
     m_proof          = false;
     m_trace          = false;
@@ -34,6 +35,7 @@ context_params::context_params() {
     m_smtlib2_compliant = false;
     m_well_sorted_check = false;
     m_timeout = UINT_MAX;
+    m_rlimit  = 0;
     updt_params();
 }
 
@@ -45,7 +47,28 @@ void context_params::set_bool(bool & opt, char const * param, char const * value
         opt = false;
     }
     else {
-        throw default_exception("invalid value '%s' for Boolean parameter '%s'", value, param);
+        std::stringstream strm;
+        strm << "invalid value '" << value << "' for Boolean parameter '" << param << "'";
+        throw default_exception(strm.str());
+    }
+}
+
+void context_params::set_uint(unsigned & opt, char const * param, char const * value) {
+    bool is_uint = true;
+    size_t sz = strlen(value);
+    for (unsigned i = 0; i < sz; i++) {
+        if (!(value[i] >= '0' && value[i] <= '9'))
+            is_uint = false;
+    }
+
+    if (is_uint) {
+        long val = strtol(value, 0, 10);
+        opt = static_cast<unsigned>(val);
+    }
+    else {
+        std::stringstream strm;
+        strm << "invalid value '" << value << "' for unsigned int parameter '" << param << "'";
+        throw default_exception(strm.str());
     }
 }
 
@@ -59,8 +82,10 @@ void context_params::set(char const * param, char const * value) {
             p[i] = '_';
     }
     if (p == "timeout") {
-        long val = strtol(value, 0, 10);
-        m_timeout = static_cast<unsigned>(val);
+        set_uint(m_timeout, param, value);
+    }
+    else if (p == "rlimit") {
+        set_uint(m_rlimit, param, value);
     }
     else if (p == "type_check" || p == "well_sorted_check") {
         set_bool(m_well_sorted_check, param, value);
@@ -76,6 +101,9 @@ void context_params::set(char const * param, char const * value) {
     }
     else if (p == "model_validate") {
         set_bool(m_model_validate, param, value);
+    }
+    else if (p == "dump_models") {
+        set_bool(m_dump_models, param, value);
     }
     else if (p == "trace") {
         set_bool(m_trace, param, value);
@@ -93,13 +121,13 @@ void context_params::set(char const * param, char const * value) {
         set_bool(m_smtlib2_compliant, param, value);
     }
     else {
-       param_descrs d;
-       collect_param_descrs(d);
-       std::stringstream strm;
-       strm << "unknown parameter '" << p << "'\n";
-       strm << "Legal parameters are:\n";
-       d.display(strm, 2, false, false);
-       throw default_exception(strm.str());        
+        param_descrs d;
+        collect_param_descrs(d);
+        std::stringstream strm;
+        strm << "unknown parameter '" << p << "'\n";
+        strm << "Legal parameters are:\n";
+        d.display(strm, 2, false, false);
+        throw default_exception(strm.str());
     }
 }
 
@@ -109,11 +137,13 @@ void context_params::updt_params() {
 
 void context_params::updt_params(params_ref const & p) {
     m_timeout           = p.get_uint("timeout", m_timeout);
+    m_rlimit            = p.get_uint("rlimit", m_rlimit);
     m_well_sorted_check = p.get_bool("type_check", p.get_bool("well_sorted_check", m_well_sorted_check));
     m_auto_config       = p.get_bool("auto_config", m_auto_config);
     m_proof             = p.get_bool("proof", m_proof);
     m_model             = p.get_bool("model", m_model);
     m_model_validate    = p.get_bool("model_validate", m_model_validate);
+    m_dump_models       = p.get_bool("dump_models", m_dump_models);
     m_trace             = p.get_bool("trace", m_trace);
     m_trace_file_name   = p.get_str("trace_file_name", "z3.log");
     m_unsat_core        = p.get_bool("unsat_core", m_unsat_core);
@@ -123,10 +153,12 @@ void context_params::updt_params(params_ref const & p) {
 
 void context_params::collect_param_descrs(param_descrs & d) {
     d.insert("timeout", CPK_UINT, "default timeout (in milliseconds) used for solvers", "4294967295");
-    d.insert("well_sorted_check", CPK_BOOL, "type checker", "true");
+    d.insert("rlimit", CPK_UINT, "default resource limit used for solvers. Unrestricted when set to 0.", "0");
+    d.insert("well_sorted_check", CPK_BOOL, "type checker", "false");
     d.insert("type_check", CPK_BOOL, "type checker (alias for well_sorted_check)", "true");
     d.insert("auto_config", CPK_BOOL, "use heuristics to automatically select solver and configure it", "true");
     d.insert("model_validate", CPK_BOOL, "validate models produced by solvers", "false");
+    d.insert("dump_models", CPK_BOOL, "dump models whenever check-sat returns sat", "false");
     d.insert("trace", CPK_BOOL, "trace generation for VCC", "false");
     d.insert("trace_file_name", CPK_STRING, "trace out file name (see option 'trace')", "z3.log");
     d.insert("debug_ref_count", CPK_BOOL, "debug support for AST reference counting", "false");
@@ -159,8 +191,8 @@ void context_params::get_solver_params(ast_manager const & m, params_ref & p, bo
 }
 
 ast_manager * context_params::mk_ast_manager() {
-    ast_manager * r = alloc(ast_manager, 
-                            m_proof ? PGM_FINE : PGM_DISABLED, 
+    ast_manager * r = alloc(ast_manager,
+                            m_proof ? PGM_FINE : PGM_DISABLED,
                             m_trace ? m_trace_file_name.c_str() : 0);
     if (m_smtlib2_compliant)
         r->enable_int_real_coercions(false);

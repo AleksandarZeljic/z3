@@ -40,6 +40,15 @@ array_decl_plugin::array_decl_plugin():
 #define ARRAY_SORT_STR "Array"
 
 sort * array_decl_plugin::mk_sort(decl_kind k, unsigned num_parameters, parameter const * parameters) {
+
+    if (k == _SET_SORT) {
+        if (num_parameters != 1) {
+            m_manager->raise_exception("invalid array sort definition, invalid number of parameters");
+            return 0;
+        }
+        parameter params[2] = { parameters[0], parameter(m_manager->mk_bool_sort()) };
+        return mk_sort(ARRAY_SORT, 2, params);
+    }
     SASSERT(k == ARRAY_SORT);
     if (num_parameters < 2) {
         m_manager->raise_exception("invalid array sort definition, invalid number of parameters");
@@ -293,7 +302,7 @@ func_decl * array_decl_plugin::mk_store(unsigned arity, sort * const * domain) {
                                    func_decl_info(m_family_id, OP_STORE));
 }
 
-func_decl * array_decl_plugin::mk_array_ext_skolem(unsigned arity, sort * const * domain, unsigned i) {
+func_decl * array_decl_plugin::mk_array_ext(unsigned arity, sort * const * domain, unsigned i) {
     if (arity != 2 || domain[0] != domain[1]) {
         UNREACHABLE();
         return 0;
@@ -306,7 +315,7 @@ func_decl * array_decl_plugin::mk_array_ext_skolem(unsigned arity, sort * const 
     }
     sort * r = to_sort(s->get_parameter(i).get_ast());
     parameter param(s);
-    return m_manager->mk_func_decl(m_array_ext_sym, arity, domain, r, func_decl_info(m_family_id, OP_ARRAY_EXT_SKOLEM, 1, &param));
+    return m_manager->mk_func_decl(m_array_ext_sym, arity, domain, r, func_decl_info(m_family_id, OP_ARRAY_EXT, 1, &param));
 }
 
 
@@ -463,12 +472,15 @@ func_decl * array_decl_plugin::mk_func_decl(decl_kind k, unsigned num_parameters
         func_decl * f = to_func_decl(parameters[0].get_ast());
         return mk_map(f, arity, domain);        
     }
-    case OP_ARRAY_EXT_SKOLEM:
+    case OP_ARRAY_EXT:
+        if (num_parameters == 0) {
+            return mk_array_ext(arity, domain, 0);
+        }
         if (num_parameters != 1 || !parameters[0].is_int()) {
             UNREACHABLE();
             return 0;
         }
-        return mk_array_ext_skolem(arity, domain, parameters[0].get_int());
+        return mk_array_ext(arity, domain, parameters[0].get_int());
     case OP_ARRAY_DEFAULT:
         return mk_default(arity, domain);
     case OP_SET_UNION:
@@ -503,12 +515,14 @@ func_decl * array_decl_plugin::mk_func_decl(decl_kind k, unsigned num_parameters
 
 void array_decl_plugin::get_sort_names(svector<builtin_name>& sort_names, symbol const & logic) {
     sort_names.push_back(builtin_name(ARRAY_SORT_STR, ARRAY_SORT));
+    // TBD: this could easily break users even though it is already used in CVC4: 
+    // sort_names.push_back(builtin_name("Set", _SET_SORT));
 }
 
 void array_decl_plugin::get_op_names(svector<builtin_name>& op_names, symbol const & logic) {
     op_names.push_back(builtin_name("store",OP_STORE));
     op_names.push_back(builtin_name("select",OP_SELECT));
-    if (logic == symbol::null) {
+    if (logic == symbol::null || logic == symbol("HORN")) {
         // none of the SMT2 logics support these extensions
         op_names.push_back(builtin_name("const",OP_CONST_ARRAY));
         op_names.push_back(builtin_name("map",OP_ARRAY_MAP));
@@ -519,6 +533,7 @@ void array_decl_plugin::get_op_names(svector<builtin_name>& op_names, symbol con
         op_names.push_back(builtin_name("complement",OP_SET_COMPLEMENT));
         op_names.push_back(builtin_name("subset",OP_SET_SUBSET));
         op_names.push_back(builtin_name("as-array", OP_AS_ARRAY));
+        op_names.push_back(builtin_name("array-ext", OP_ARRAY_EXT));
     }
 }
 

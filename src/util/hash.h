@@ -16,15 +16,11 @@ Author:
 Revision History:
 
 --*/
-#ifndef _HASH_H_
-#define _HASH_H_
+#ifndef HASH_H_
+#define HASH_H_
 
 #include<algorithm>
 #include"util.h"
-
-#ifndef __fallthrough
-#define __fallthrough
-#endif
 
 #define mix(a,b,c)              \
 {                               \
@@ -116,7 +112,7 @@ unsigned get_composite_hash(Composite app, unsigned n, GetKindHashProc const & k
         switch (n) {
         case 2:
             b += chasher(app, 1);
-            __fallthrough;
+            Z3_fallthrough;
         case 1:
             c += chasher(app, 0);
         }
@@ -249,5 +245,5 @@ inline unsigned mk_mix(unsigned a, unsigned b, unsigned c) {
     return c;
 }
 
-#endif /* _HASH_H_ */
+#endif /* HASH_H_ */
 

@@ -20,8 +20,7 @@ package com.microsoft.z3;
 /**
  * Objects of this class track statistical information about solvers.
  **/
-public class Statistics extends Z3Object
-{
+public class Statistics extends Z3Object {
     /**
      * Statistical data is organized into pairs of [Key, Entry], where every
      * Entry is either a {@code DoubleEntry} or a {@code UIntEntry}
@@ -72,26 +71,21 @@ public class Statistics extends Z3Object
          **/
         public String getValueString()
         {
-            if (isUInt())
+            if (isUInt()) {
                 return Integer.toString(m_int);
-            else if (isDouble())
+            } else if (isDouble()) {
                 return Double.toString(m_double);
-            else
+            } else {
                 throw new Z3Exception("Unknown statistical entry type");
+            }
         }
 
         /**
          * The string representation of the Entry.
          **/
-        public String toString()
-        {
-            try
-            {
-                return Key + ": " + getValueString();
-            } catch (Z3Exception e)
-            {
-                return new String("Z3Exception: " + e.getMessage());
-            }
+        @Override
+        public String toString() {
+            return Key + ": " + getValueString();
         }
 
         private boolean m_is_int = false;
@@ -117,15 +111,10 @@ public class Statistics extends Z3Object
     /**
      * A string representation of the statistical data.
      **/
+    @Override
     public String toString()
     {
-        try
-        {
-            return Native.statsToString(getContext().nCtx(), getNativeObject());
-        } catch (Z3Exception e)
-        {
-            return "Z3Exception: " + e.getMessage();
-        }
+        return Native.statsToString(getContext().nCtx(), getNativeObject());
     }
 
     /**
@@ -150,14 +139,15 @@ public class Statistics extends Z3Object
         {
             Entry e;
             String k = Native.statsGetKey(getContext().nCtx(), getNativeObject(), i);
-            if (Native.statsIsUint(getContext().nCtx(), getNativeObject(), i))
+            if (Native.statsIsUint(getContext().nCtx(), getNativeObject(), i)) {
                 e = new Entry(k, Native.statsGetUintValue(getContext().nCtx(),
-                        getNativeObject(), i));
-            else if (Native.statsIsDouble(getContext().nCtx(), getNativeObject(), i))
+                    getNativeObject(), i));
+            } else if (Native.statsIsDouble(getContext().nCtx(), getNativeObject(), i)) {
                 e = new Entry(k, Native.statsGetDoubleValue(getContext().nCtx(),
-                        getNativeObject(), i));
-            else
+                    getNativeObject(), i));
+            } else {
                 throw new Z3Exception("Unknown data entry value");
+            }
             res[i] = e;
         }
         return res;
@@ -186,9 +176,11 @@ public class Statistics extends Z3Object
     {
         int n = size();
         Entry[] es = getEntries();
-        for (int i = 0; i < n; i++)
-            if (es[i].Key == key)
+        for (int i = 0; i < n; i++) {
+            if (es[i].Key.equals(key)) {
                 return es[i];
+            }
+        }
         return null;
     }
 
@@ -197,15 +189,13 @@ public class Statistics extends Z3Object
         super(ctx, obj);
     }
 
-    void incRef(long o)
-    {
-        getContext().getStatisticsDRQ().incAndClear(getContext(), o);
-        super.incRef(o);
+    @Override
+    void incRef() {
+        getContext().getStatisticsDRQ().storeReference(getContext(), this);
     }
 
-    void decRef(long o)
-    {
-        getContext().getStatisticsDRQ().add(o);
-        super.decRef(o);
+    @Override
+    void addToReferenceQueue() {
+        Native.statsIncRef(getContext().nCtx(), getNativeObject());
     }
 }

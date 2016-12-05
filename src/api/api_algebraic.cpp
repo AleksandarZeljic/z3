@@ -372,13 +372,13 @@ extern "C" {
         }
         scoped_anum_vector roots(_am);
         {
-            cancel_eh<algebraic_numbers::manager> eh(_am);
+            cancel_eh<reslimit> eh(mk_c(c)->m().limit());
             api::context::set_interruptable si(*(mk_c(c)), eh);
             scoped_timer timer(mk_c(c)->params().m_timeout, &eh);
             vector_var2anum v2a(as);
             _am.isolate_roots(_p, v2a, roots);
         }
-        Z3_ast_vector_ref* result = alloc(Z3_ast_vector_ref, mk_c(c)->m());
+        Z3_ast_vector_ref* result = alloc(Z3_ast_vector_ref, *mk_c(c), mk_c(c)->m());
         mk_c(c)->save_object(result);
         for (unsigned i = 0; i < roots.size(); i++) {
             result->m_ast_vector.push_back(au(c).mk_numeral(roots.get(i), false));
@@ -407,7 +407,7 @@ extern "C" {
             return 0;
         }
         {
-            cancel_eh<algebraic_numbers::manager> eh(_am);
+            cancel_eh<reslimit> eh(mk_c(c)->m().limit());
             api::context::set_interruptable si(*(mk_c(c)), eh);
             scoped_timer timer(mk_c(c)->params().m_timeout, &eh);
             vector_var2anum v2a(as);

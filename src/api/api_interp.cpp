@@ -207,12 +207,12 @@ extern "C" {
         opts->map[name] = value;
     }
 
-    Z3_ast_vector Z3_API Z3_get_interpolant(__in Z3_context c, __in Z3_ast pf, __in Z3_ast pat, __in Z3_params p){
+    Z3_ast_vector Z3_API Z3_get_interpolant(Z3_context c, Z3_ast pf, Z3_ast pat, Z3_params p){
         Z3_TRY;
         LOG_Z3_get_interpolant(c, pf, pat, p);
         RESET_ERROR_CODE();
 
-        Z3_ast_vector_ref * v = alloc(Z3_ast_vector_ref, mk_c(c)->m());
+        Z3_ast_vector_ref * v = alloc(Z3_ast_vector_ref, *mk_c(c), mk_c(c)->m());
         mk_c(c)->save_object(v);
 
         ast *_pf = to_ast(pf);
@@ -240,7 +240,7 @@ extern "C" {
         Z3_CATCH_RETURN(0);
     }
 
-    Z3_lbool Z3_API Z3_compute_interpolant(__in Z3_context c, __in Z3_ast pat, __in Z3_params p, __out Z3_ast_vector *out_interp, __out Z3_model *model){
+    Z3_lbool Z3_API Z3_compute_interpolant(Z3_context c, Z3_ast pat, Z3_params p, Z3_ast_vector *out_interp, Z3_model *model){
         Z3_TRY;
         LOG_Z3_compute_interpolant(c, pat, p, out_interp, model);
         RESET_ERROR_CODE();
@@ -255,6 +255,14 @@ extern "C" {
         scoped_ptr<solver> m_solver((*sf)(mk_c(c)->m(), _p, true, true, true, ::symbol::null));
         m_solver.get()->updt_params(_p); // why do we have to do this?
 
+
+        // some boilerplate stolen from Z3_solver_check
+        unsigned timeout     =  p?to_params(p)->m_params.get_uint("timeout", mk_c(c)->get_timeout()):UINT_MAX;
+        unsigned rlimit      =  p?to_params(p)->m_params.get_uint("rlimit", mk_c(c)->get_rlimit()):0;
+        bool     use_ctrl_c  =  p?to_params(p)->m_params.get_bool("ctrl_c", false): false;
+        cancel_eh<reslimit> eh(mk_c(c)->m().limit());
+        api::context::set_interruptable si(*(mk_c(c)), eh);
+
         ast *_pat = to_ast(pat);
 
         ptr_vector<ast> interp;
@@ -263,14 +271,27 @@ extern "C" {
         ast_manager &_m = mk_c(c)->m();
 
         model_ref m;
-        lbool _status = iz3interpolate(_m,
-                                       *(m_solver.get()),
-                                       _pat,
-                                       cnsts,
-                                       interp,
-                                       m,
-                                       0 // ignore params for now
-                                       );
+        lbool _status;
+
+        {
+            scoped_ctrl_c ctrlc(eh, false, use_ctrl_c);
+            scoped_timer timer(timeout, &eh);
+            scoped_rlimit _rlimit(mk_c(c)->m().limit(), rlimit);
+            try {
+                _status = iz3interpolate(_m,
+                                         *(m_solver.get()),
+                                         _pat,
+                                         cnsts,
+                                         interp,
+                                         m,
+                                         0 // ignore params for now
+                                         );
+            }
+            catch (z3_exception & ex) {
+                mk_c(c)->handle_exception(ex);
+                RETURN_Z3_compute_interpolant Z3_L_UNDEF;
+            }
+        }
 
         for (unsigned i = 0; i < cnsts.size(); i++)
             _m.dec_ref(cnsts[i]);
@@ -282,7 +303,7 @@ extern "C" {
 
         if (_status == l_false){
             // copy result back
-            v = alloc(Z3_ast_vector_ref, mk_c(c)->m());
+            v = alloc(Z3_ast_vector_ref, *mk_c(c), mk_c(c)->m());
             mk_c(c)->save_object(v);
             for (unsigned i = 0; i < interp.size(); i++){
                 v->m_ast_vector.push_back(interp[i]);
@@ -290,17 +311,19 @@ extern "C" {
             }
         }
         else {
-            model_ref _m;
-            m_solver.get()->get_model(_m);
-            Z3_model_ref *tmp_val = alloc(Z3_model_ref);
-            tmp_val->m_model = _m.get();
-            mk_c(c)->save_object(tmp_val);
-            *model = of_model(tmp_val);
+            model_ref mr;
+            m_solver.get()->get_model(mr);
+            if(mr.get()){
+                Z3_model_ref *tmp_val = alloc(Z3_model_ref, *mk_c(c));
+                tmp_val->m_model = mr.get();
+                mk_c(c)->save_object(tmp_val);
+                *model = of_model(tmp_val);
+            }
         }
 
         *out_interp = of_ast_vector(v);
 
-        return status;
+        RETURN_Z3_compute_interpolant status;
         Z3_CATCH_RETURN(Z3_L_UNDEF);
     }
 
@@ -708,15 +731,15 @@ extern "C" {
     def_API('Z3_interpolate', BOOL, (_in(CONTEXT), _in(UINT), _in_array(1, AST), _in_array(1, UINT), _in(PARAMS), _out_array(1, AST), _out(MODEL), _out(LITERALS), _in(UINT), _in(UINT), _in_array(9, AST)))
 */
 
-Z3_lbool Z3_API Z3_interpolate(__in Z3_context ctx,
-                               __in unsigned num,
-                               __in_ecount(num) Z3_ast *cnsts,
-                               __in_ecount(num) unsigned *parents,
-                               __in Z3_params options,
-                               __out_ecount(num - 1) Z3_ast *interps,
-                               __out Z3_model *model,
-                               __out Z3_literals *labels,
-                               __in unsigned incremental,
-                               __in unsigned num_theory,
-                               __in_ecount(num_theory) Z3_ast *theory);
+Z3_lbool Z3_API Z3_interpolate(Z3_context ctx,
+                               unsigned num,
+                               Z3_ast *cnsts,
+                               unsigned *parents,
+                               Z3_params options,
+                               Z3_ast *interps,
+                               Z3_model *model,
+                               Z3_literals *labels,
+                               unsigned incremental,
+                               unsigned num_theory,
+                               Z3_ast *theory);
 #endif

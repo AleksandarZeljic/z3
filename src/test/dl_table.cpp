@@ -1,4 +1,8 @@
-#ifdef _WINDOWS
+/*++
+Copyright (c) 2015 Microsoft Corporation
+--*/
+#if defined(_WINDOWS) || defined(_CYGWIN)
+
 #include "dl_context.h"
 #include "dl_table.h"
 #include "dl_register_engine.h"
@@ -90,7 +94,6 @@ static void test_table(mk_table_fn mk_table) {
 void test_dl_bitvector_table() {
     test_table(mk_bv_table);
 }
-
 
 void tst_dl_table() {
     test_dl_bitvector_table();

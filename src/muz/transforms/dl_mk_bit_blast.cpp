@@ -70,13 +70,12 @@ namespace datalog {
                 func_interp* f = model->get_func_interp(p);
                 if (!f) continue;
                 expr_ref body(m);                
-                unsigned arity_p = p->get_arity();
                 unsigned arity_q = q->get_arity();
                 TRACE("dl",
                       model_v2_pp(tout, *model);
                       tout << mk_pp(p, m) << "\n";
                       tout << mk_pp(q, m) << "\n";);
-                SASSERT(0 < arity_p);
+                SASSERT(0 < p->get_arity());
                 SASSERT(f);
                 model->register_decl(p, f->copy());
                 func_interp* g = alloc(func_interp, m, arity_q);
@@ -225,7 +224,6 @@ namespace datalog {
         mk_interp_tail_simplifier m_simplifier;
         bit_blaster_rewriter m_blaster;
         expand_mkbv          m_rewriter;
-        
 
         bool blast(rule *r, expr_ref& fml) {
             proof_ref pr(m);
@@ -235,7 +233,7 @@ namespace datalog {
             if (!m_simplifier.transform_rule(r, r2)) {
                 r2 = r;
             }
-            r2->to_formula(fml1);
+            m_context.get_rule_manager().to_formula(*r2.get(), fml1);
             m_blaster(fml1, fml2, pr);
             m_rewriter(fml2, fml3);
             TRACE("dl", tout << mk_pp(fml, m) << " -> " << mk_pp(fml2, m) << " -> " << mk_pp(fml3, m) << "\n";);
@@ -263,7 +261,7 @@ namespace datalog {
         
         rule_set * operator()(rule_set const & source) {
             // TODO pc
-            if (!m_context.bit_blast()) {
+            if (!m_context.xform_bit_blast()) {
                 return 0;
             }
             rule_manager& rm = m_context.get_rule_manager();
@@ -274,7 +272,7 @@ namespace datalog {
             m_rewriter.m_cfg.set_dst(result);
             for (unsigned i = 0; !m_context.canceled() && i < sz; ++i) {
                 rule * r = source.get_rule(i);
-                r->to_formula(fml);
+                rm.to_formula(*r, fml);
                 if (blast(r, fml)) {
                     proof_ref pr(m);
                     if (r->get_proof()) {

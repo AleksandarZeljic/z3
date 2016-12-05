@@ -16,13 +16,17 @@ Author:
 Notes:
 
 --*/
-#ifndef _QFIDL_TACTIC_H_
-#define _QFIDL_TACTIC_H_
+#ifndef QFIDL_TACTIC_H_
+#define QFIDL_TACTIC_H_
 
 #include"params.h"
 class ast_manager;
 class tactic;
 
 tactic * mk_qfidl_tactic(ast_manager & m, params_ref const & p = params_ref());
+
+/*
+    ADD_TACTIC("qfidl", "builtin strategy for solving QF_IDL problems.", "mk_qfidl_tactic(m, p)")
+*/
 
 #endif

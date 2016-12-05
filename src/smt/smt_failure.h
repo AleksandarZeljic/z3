@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _SMT_FAILURE_H_
-#define _SMT_FAILURE_H_
+#ifndef SMT_FAILURE_H_
+#define SMT_FAILURE_H_
 
 namespace smt {
 
@@ -32,6 +32,7 @@ namespace smt {
         CANCELED,      //!< External cancel flag was set
         NUM_CONFLICTS, //!< Maximum number of conflicts was reached
         THEORY,        //!< Theory is incomplete
+        RESOURCE_LIMIT,
         QUANTIFIERS    //!< Logical context contains universal quantifiers.
     };
 

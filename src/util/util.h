@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _UTIL_H_
-#define _UTIL_H_
+#ifndef UTIL_H_
+#define UTIL_H_
 
 #include"debug.h"
 #include"memory_manager.h"
@@ -59,6 +59,7 @@ COMPILE_TIME_ASSERT(sizeof(int64) == 8);
 #define SPRINTF sprintf
 #endif
 
+#define VEC2PTR(_x_) ((_x_).size() ? &(_x_)[0] : 0)
 
 #ifdef _WINDOWS
 // Disable thread local declspec as it seems to not work downlevel.
@@ -66,6 +67,24 @@ COMPILE_TIME_ASSERT(sizeof(int64) == 8);
 #define THREAD_LOCAL 
 #else
 #define THREAD_LOCAL 
+#endif
+
+#ifdef _MSC_VER
+# define STD_CALL __cdecl
+#else
+# define STD_CALL
+#endif
+
+#ifdef __fallthrough
+# define Z3_fallthrough __fallthrough
+#elif defined(__has_cpp_attribute)
+# if __has_cpp_attribute(clang::fallthrough)
+#  define Z3_fallthrough [[clang::fallthrough]]
+# else
+#  define Z3_fallthrough
+# endif
+#else
+# define Z3_fallthrough
 #endif
 
 inline bool is_power_of_two(unsigned v) { return !(v & (v - 1)) && v; }
@@ -207,9 +226,7 @@ public:
     }
 
     ~scoped_ptr() {
-        if (m_ptr) {
-            dealloc(m_ptr);
-        }
+        dealloc(m_ptr);
     }
 
     T * operator->() const { 
@@ -234,9 +251,7 @@ public:
 
     scoped_ptr & operator=(T * n) {
         if (m_ptr != n) {
-            if (m_ptr) {
-                dealloc(m_ptr);
-            }
+            dealloc(m_ptr);
             m_ptr = n;
         }
         return *this;
@@ -272,22 +287,6 @@ bool has_duplicates(const IT & begin, const IT & end) {
     }
     return false;
 }
-
-#ifndef __out
-#define __out
-#endif
-
-#ifndef __in
-#define __in
-#endif
-
-#ifndef __inout
-#define __inout
-#endif
-
-#ifndef __fallthrough
-#define __fallthrough
-#endif
 
 #ifndef _WINDOWS
 #ifndef __declspec
@@ -404,7 +403,6 @@ inline size_t megabytes_to_bytes(unsigned mb) {
     return r;
 }
 
-void z3_bound_num_procs();
 
-#endif /* _UTIL_H_ */
+#endif /* UTIL_H_ */
 

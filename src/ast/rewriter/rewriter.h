@@ -16,8 +16,8 @@ Author:
 Notes:
 
 --*/
-#ifndef _REWRITER_H_
-#define _REWRITER_H_
+#ifndef REWRITER_H_
+#define REWRITER_H_
 
 #include"ast.h"
 #include"rewriter_types.h"
@@ -48,6 +48,7 @@ protected:
     };
     ast_manager &              m_manager;
     bool                       m_proof_gen; 
+    bool                       m_cancel_check;
     typedef act_cache          cache;
     ptr_vector<cache>          m_cache_stack;
     cache *                    m_cache; // current cache.
@@ -114,6 +115,7 @@ public:
     ast_manager & m() const { return m_manager; }
     void reset();
     void cleanup();
+    void set_cancel_check(bool f) { m_cancel_check = f; }
 #ifdef _TRACE
     void display_stack(std::ostream & out, unsigned pp_depth);
 #endif
@@ -212,13 +214,14 @@ protected:
     };
     Config &                   m_cfg;
     unsigned                   m_num_steps;
-    volatile bool              m_cancel;
     ptr_vector<expr>           m_bindings;
     var_shifter                m_shifter;
+    inv_var_shifter            m_inv_shifter;
     expr_ref                   m_r;
     proof_ref                  m_pr;
     proof_ref                  m_pr2;
-    
+    unsigned_vector            m_shifts;
+
     svector<frame> & frame_stack() { return this->m_frame_stack; }
     svector<frame> const & frame_stack() const { return this->m_frame_stack; }
     expr_ref_vector & result_stack() { return this->m_result_stack; }
@@ -226,13 +229,14 @@ protected:
     proof_ref_vector & result_pr_stack() { return this->m_result_pr_stack; }
     proof_ref_vector const & result_pr_stack() const { return this->m_result_pr_stack; }
 
+    void display_bindings(std::ostream& out);
+
     void set_new_child_flag(expr * old_t) {
         SASSERT(frame_stack().empty() || frame_stack().back().m_state != PROCESS_CHILDREN || this->is_child_of_top_frame(old_t));
         if (!frame_stack().empty())
             frame_stack().back().m_new_child = true;
     }
     void set_new_child_flag(expr * old_t, expr * new_t) { if (old_t != new_t) set_new_child_flag(old_t); }
-
 
     // cache the result of shared non atomic expressions.
     bool cache_results() const { return m_cfg.cache_results(); }
@@ -332,10 +336,6 @@ public:
     ast_manager & m() const { return this->m_manager; }
     Config & cfg() { return m_cfg; }
     Config const & cfg() const { return m_cfg; }
-
-    void set_cancel(bool f) { m_cancel = f; }
-    void cancel() { set_cancel(true); }
-    void reset_cancel() { set_cancel(false); }
 
     ~rewriter_tpl();
     

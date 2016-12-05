@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _PATTERN_INFERENCE_PARAMS_H_
-#define _PATTERN_INFERENCE_PARAMS_H_
+#ifndef PATTERN_INFERENCE_PARAMS_H_
+#define PATTERN_INFERENCE_PARAMS_H_
 
 #include"params.h"
 
@@ -46,7 +46,9 @@ struct pattern_inference_params {
     }
 
     void updt_params(params_ref const & _p);
+
+    void display(std::ostream & out) const;
 };
 
-#endif /* _PATTERN_INFERENCE_PARAMS_H_ */
+#endif /* PATTERN_INFERENCE_PARAMS_H_ */
 

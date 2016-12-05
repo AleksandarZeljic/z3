@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _SMT_CONTEXT_H_
-#define _SMT_CONTEXT_H_
+#ifndef SMT_CONTEXT_H_
+#define SMT_CONTEXT_H_
 
 #include"smt_clause.h"
 #include"smt_setup.h"
@@ -71,6 +71,7 @@ namespace smt {
 
         std::ostream& display_last_failure(std::ostream& out) const;
         std::string last_failure_as_string() const;
+        void set_reason_unknown(char const* msg) { m_unknown = msg; }
         void set_progress_callback(progress_callback *callback);
 
 
@@ -79,7 +80,6 @@ namespace smt {
         smt_params &                m_fparams;
         params_ref                  m_params;
         setup                       m_setup;
-        volatile bool               m_cancel_flag;
         timer                       m_timer;
         asserted_formulas           m_asserted_formulas;
         scoped_ptr<quantifier_manager>   m_qmanager;
@@ -157,7 +157,7 @@ namespace smt {
         u_map<bool_var>             m_expr2bool_var;
 #endif
         ptr_vector<expr>            m_bool_var2expr;         // bool_var -> expr
-        char_vector                 m_assignment;  //!< mapping literal id -> assignment lbool
+        signed_char_vector          m_assignment;  //!< mapping literal id -> assignment lbool
         vector<watch_list>          m_watches;     //!< per literal
         vector<clause_set>          m_lit_occs;    //!< index for backward subsumption
         svector<bool_var_data>      m_bdata;       //!< mapping bool_var -> data
@@ -198,17 +198,31 @@ namespace smt {
         // -----------------------------------
         proto_model_ref            m_proto_model;
         model_ref                  m_model;
+        std::string                m_unknown;
         void                       mk_proto_model(lbool r);
-        struct scoped_mk_model;
+        struct scoped_mk_model {
+            context & m_ctx;
+            scoped_mk_model(context & ctx):m_ctx(ctx) {
+                m_ctx.m_proto_model = 0;
+                m_ctx.m_model       = 0;
+            }
+            ~scoped_mk_model() {
+                if (m_ctx.m_proto_model.get() != 0) {
+                    m_ctx.m_model = m_ctx.m_proto_model->mk_model();
+                    m_ctx.m_proto_model = 0; // proto_model is not needed anymore.
+                }
+            }
+        };
+
 
         // -----------------------------------
         //
         // Unsat core extraction
         //
         // -----------------------------------
-        typedef u_map<expr *>  bool_var2assumption;
-        bool_var_vector             m_assumptions;
-        bool_var2assumption         m_bool_var2assumption; // maps an expression associated with a literal to the original assumption
+        typedef u_map<expr *>  literal2assumption;
+        literal_vector             m_assumptions;
+        literal2assumption         m_literal2assumption; // maps an expression associated with a literal to the original assumption
         expr_ref_vector             m_unsat_core;
 
         // -----------------------------------
@@ -233,9 +247,7 @@ namespace smt {
             return m_params;
         }
 
-        virtual void set_cancel_flag(bool f = true);
-
-        bool get_cancel_flag() { return m_cancel_flag; }
+        bool get_cancel_flag() { return !m_manager.limit().inc(); }
 
         region & get_region() {
             return m_region;
@@ -335,6 +347,10 @@ namespace smt {
 
         lbool get_assignment(bool_var v) const {
             return get_assignment(literal(v));
+        }
+
+        literal_vector const & assigned_literals() const { 
+            return m_assigned_literals; 
         }
 
         lbool get_assignment(expr * n) const;
@@ -938,7 +954,7 @@ namespace smt {
             push_eq(n1, n2, eq_justification::mk_cg(used_commutativity));
         }
 
-        void add_diseq(enode * n1, enode * n2);
+        bool add_diseq(enode * n1, enode * n2);
 
         void assign_quantifier(quantifier * q);
 
@@ -1042,6 +1058,8 @@ namespace smt {
 
         void mk_unsat_core();
 
+        void validate_unsat_core();
+
         void init_search();
 
         void end_search();
@@ -1049,6 +1067,8 @@ namespace smt {
         lbool search();
 
         void inc_limits();
+
+        bool restart(lbool& status, unsigned curr_lvl);
 
         void tick(unsigned & counter) const;
 
@@ -1170,7 +1190,17 @@ namespace smt {
 
         void display_literals(std::ostream & out, unsigned num_lits, literal const * lits) const;
 
+        void display_literals(std::ostream & out, literal_vector const& lits) const {
+            display_literals(out, lits.size(), lits.c_ptr());
+        }
+
+        void display_literal_verbose(std::ostream & out, literal lit) const;
+
         void display_literals_verbose(std::ostream & out, unsigned num_lits, literal const * lits) const;
+
+        void display_literals_verbose(std::ostream & out, literal_vector const& lits) const {
+            display_literals_verbose(out, lits.size(), lits.c_ptr());
+        }
 
         void display_watch_list(std::ostream & out, literal l) const;
 
@@ -1202,18 +1232,18 @@ namespace smt {
 
         void display_hot_bool_vars(std::ostream & out) const;
 
-        void display_lemma_as_smt_problem(std::ostream & out, unsigned num_antecedents, literal const * antecedents, literal consequent = false_literal, const char * logic = "AUFLIRA") const;
+        void display_lemma_as_smt_problem(std::ostream & out, unsigned num_antecedents, literal const * antecedents, literal consequent = false_literal, symbol const& logic = symbol::null) const;
 
-        void display_lemma_as_smt_problem(unsigned num_antecedents, literal const * antecedents, literal consequent = false_literal, const char * logic = "AUFLIRA") const;
+        void display_lemma_as_smt_problem(unsigned num_antecedents, literal const * antecedents, literal consequent = false_literal, symbol const& logic = symbol::null) const;
         void display_lemma_as_smt_problem(std::ostream & out, unsigned num_antecedents, literal const * antecedents, 
                                           unsigned num_antecedent_eqs, enode_pair const * antecedent_eqs, 
-                                          literal consequent = false_literal, const char * logic = "AUFLIRA") const;
+                                          literal consequent = false_literal, symbol const& logic = symbol::null) const;
 
         void display_lemma_as_smt_problem(unsigned num_antecedents, literal const * antecedents, 
                                           unsigned num_antecedent_eqs, enode_pair const * antecedent_eqs, 
-                                          literal consequent = false_literal, const char * logic = "AUFLIRA") const;
+                                          literal consequent = false_literal, symbol const& logic = symbol::null) const;
 
-        void display_assignment_as_smtlib2(std::ostream& out, const char * logic = "AUFLIRA") const; 
+        void display_assignment_as_smtlib2(std::ostream& out, symbol const& logic = symbol::null) const; 
 
         void display_normalized_enodes(std::ostream & out) const;
 
@@ -1230,6 +1260,8 @@ namespace smt {
         void display_profile_res_sub(std::ostream & out) const;
 
         void display_profile(std::ostream & out) const;
+
+        void display(std::ostream& out, b_justification j) const;
 
         // -----------------------------------
         //
@@ -1304,12 +1336,13 @@ namespace smt {
         virtual void setup_context(bool use_static_features);
         void setup_components(void);
         void pop_to_base_lvl();
+        void pop_to_search_lvl();
 #ifdef Z3DEBUG
         bool already_internalized_theory(theory * th) const;
         bool already_internalized_theory_core(theory * th, expr_ref_vector const & s) const;
 #endif
         bool check_preamble(bool reset_cancel);
-        void check_finalize(lbool r);
+        lbool check_finalize(lbool r);
 
         // -----------------------------------
         //
@@ -1318,8 +1351,47 @@ namespace smt {
         // -----------------------------------
         void assert_expr_core(expr * e, proof * pr);
 
+        // copy plugins into a fresh context.
+        void copy_plugins(context& src, context& dst);
+
+        static literal translate_literal(
+            literal lit, context& src_ctx, context& dst_ctx,
+            vector<bool_var> b2v, ast_translation& tr);
+        
+        /*
+          \brief Utilities for consequence finding.
+        */
+        typedef hashtable<unsigned, u_hash, u_eq> index_set;
+        //typedef uint_set index_set;
+        u_map<index_set> m_antecedents;
+        void extract_fixed_consequences(literal lit, obj_map<expr, expr*>& var2val, index_set const& assumptions, expr_ref_vector& conseq);
+        void extract_fixed_consequences(unsigned& idx, obj_map<expr, expr*>& var2val, index_set const& assumptions, expr_ref_vector& conseq);
+       
+        void display_consequence_progress(std::ostream& out, unsigned it, unsigned nv, unsigned fixed, unsigned unfixed, unsigned eq);
+
+        unsigned delete_unfixed(obj_map<expr, expr*>& var2val, expr_ref_vector& unfixed);
+
+        unsigned extract_fixed_eqs(obj_map<expr, expr*>& var2val, expr_ref_vector& conseq);
+
+        expr_ref antecedent2fml(index_set const& ante);
+
+
+        literal mk_diseq(expr* v, expr* val);
+
+        void validate_consequences(expr_ref_vector const& assumptions, expr_ref_vector const& vars, 
+                                   expr_ref_vector const& conseq, expr_ref_vector const& unfixed);
+
+        void justify(literal lit, index_set& s);
+
+        void extract_cores(expr_ref_vector const& asms, vector<expr_ref_vector>& cores, unsigned& min_core_size);
+
+        void preferred_sat(literal_vector& literals);
+
+        void display_partial_assignment(std::ostream& out, expr_ref_vector const& asms, unsigned min_core_size);
+
     public:
         context(ast_manager & m, smt_params & fp, params_ref const & p = params_ref());
+
 
         virtual ~context();
 
@@ -1332,9 +1404,15 @@ namespace smt {
         */
         context * mk_fresh(symbol const * l = 0,  smt_params * p = 0);
 
+        static void copy(context& src, context& dst);
+
+        /**
+           \brief Translate context to use new manager m.
+         */
+
         app * mk_eq_atom(expr * lhs, expr * rhs);
 
-        bool set_logic(symbol logic) { return m_setup.set_logic(logic); }
+        bool set_logic(symbol const& logic) { return m_setup.set_logic(logic); }
 
         void register_plugin(simplifier_plugin * s);
 
@@ -1349,6 +1427,12 @@ namespace smt {
         void pop(unsigned num_scopes);
 
         lbool check(unsigned num_assumptions = 0, expr * const * assumptions = 0, bool reset_cancel = true);        
+
+        lbool get_consequences(expr_ref_vector const& assumptions, expr_ref_vector const& vars, expr_ref_vector& conseq, expr_ref_vector& unfixed);
+
+        lbool find_mutexes(expr_ref_vector const& vars, vector<expr_ref_vector>& mutexes);
+
+        lbool preferred_sat(expr_ref_vector const& asms, vector<expr_ref_vector>& cores);
         
         lbool setup_and_check(bool reset_cancel = true);
         
@@ -1373,10 +1457,8 @@ namespace smt {
 
         void internalize_instance(expr * body, proof * pr, unsigned generation) {
             internalize_assertion(body, pr, generation);
-#ifndef SMTCOMP
             if (relevancy())
                 m_case_split_queue->internalize_instance_eh(body, generation);
-#endif
         }
 
         bool already_internalized() const { return m_e_internalized_stack.size() > 2 || m_b_internalized_stack.size() > 1; }
@@ -1391,7 +1473,11 @@ namespace smt {
         
         void get_model(model_ref & m) const;
 
+        bool update_model(bool refinalize);
+
         void get_proto_model(proto_model_ref & m) const;
+
+        bool validate_model();
         
         unsigned get_num_asserted_formulas() const { return m_asserted_formulas.get_num_formulas(); }
 
@@ -1434,5 +1520,5 @@ namespace smt {
 
 };
 
-#endif /* _SMT_CONTEXT_H_ */
+#endif /* SMT_CONTEXT_H_ */
 

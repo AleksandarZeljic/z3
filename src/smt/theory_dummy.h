@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _THEORY_DUMMY_H_
-#define _THEORY_DUMMY_H_
+#ifndef THEORY_DUMMY_H_
+#define THEORY_DUMMY_H_
 
 #include"smt_theory.h"
 
@@ -43,6 +43,7 @@ namespace smt {
         virtual bool build_models() const { 
             return false;
         }
+        virtual void display(std::ostream& out) const {}
 
     public:
         theory_dummy(family_id fid, char const * name);
@@ -54,5 +55,5 @@ namespace smt {
     };
 };
 
-#endif /* _THEORY_DUMMY_H_ */
+#endif /* THEORY_DUMMY_H_ */
 

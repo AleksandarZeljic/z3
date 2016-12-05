@@ -21,8 +21,8 @@ Author:
 Notes:
 
 --*/
-#ifndef _GOAL2NLSAT_H_
-#define _GOAL2NLSAT_H_
+#ifndef GOAL2NLSAT_H_
+#define GOAL2NLSAT_H_
 
 #include"nlsat_types.h"
 #include"model_converter.h"
@@ -51,25 +51,22 @@ public:
     */
     void operator()(goal const & g, params_ref const & p, nlsat::solver & s, expr2var & a2b, expr2var & t2x);
     
-    void set_cancel(bool f);
 };
 
 class nlsat2goal {
     struct imp;
     imp *  m_imp;
 public:
-    nlsat2goal();
+    nlsat2goal(ast_manager& m);
     ~nlsat2goal();
 
     static void collect_param_descrs(param_descrs & r);
 
     /**
-       \brief Translate the state of the nlsat engine back into a goal.
-    */
-    void operator()(nlsat::solver const & s, expr2var const & a2b, expr2var const & t2x,
-                    params_ref const & p, goal & g, model_converter_ref & mc);
-    
-    void set_cancel(bool f);
+       \brief Translate a literal into a formula.
+    */   
+    expr_ref operator()(nlsat::solver& s, u_map<expr*> const& b2a, u_map<expr*> const& x2t, nlsat::literal l);
+
 };
 
 #endif

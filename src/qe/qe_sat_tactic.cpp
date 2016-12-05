@@ -58,7 +58,6 @@ namespace qe {
 
         ast_manager&            m;
         expr_ref                m_false;
-        volatile bool           m_cancel;
         smt_params              m_fparams;
         params_ref              m_params;
         unsigned                m_extrapolate_strategy_param;
@@ -67,6 +66,7 @@ namespace qe {
         bool                    m_ctx_simplify_local_param;
         vector<app_ref_vector>  m_vars;
         ptr_vector<smt::kernel> m_solvers;
+        vector<smt_params>      m_fparamv;
         smt::kernel             m_solver;
         expr_ref                m_fml;
         expr_ref_vector         m_Ms;
@@ -208,7 +208,6 @@ namespace qe {
         sat_tactic(ast_manager& m, params_ref const& p = params_ref()):
             m(m),
             m_false(m.mk_false(), m),
-            m_cancel(false),
             m_params(p),
             m_extrapolate_strategy_param(0),
             m_projection_mode_param(true),
@@ -229,20 +228,7 @@ namespace qe {
         }
 
         virtual ~sat_tactic() {
-            for (unsigned i = 0; i < m_solvers.size(); ++i) {
-                dealloc(m_solvers[i]);
-            }
-        }
-
-        virtual void set_cancel(bool f) { 
-            m_cancel = f; 
-            // not thread-safe when solvers are reset.
-            // TBD: lock - this, reset() and init_Ms.
-            for (unsigned i = 0; i < m_solvers.size(); ++i) {
-                m_solvers[i]->set_cancel(f);
-            }
-            m_solver.set_cancel(f);
-            m_ctx_rewriter.set_cancel(f);
+            reset();
         }
 
         virtual void operator()(
@@ -323,12 +309,14 @@ namespace qe {
         unsigned num_alternations() const { return m_vars.size(); }
             
         void init_Ms() {
-            for (unsigned i = 0; i < num_alternations(); ++i) {
-                m_Ms.push_back(m.mk_true());
-                m_solvers.push_back(alloc(smt::kernel, m, m_fparams, m_params));
+            for (unsigned i = 0; i <= num_alternations(); ++i) {
+                m_fparamv.push_back(m_fparams);
             }
-            m_Ms.push_back(m_fml);
-            m_solvers.push_back(alloc(smt::kernel, m, m_fparams, m_params));   
+            for (unsigned i = 0; i <= num_alternations(); ++i) {
+                m_Ms.push_back(m.mk_true());
+                m_solvers.push_back(alloc(smt::kernel, m, m_fparamv[i], m_params));
+            }
+            m_Ms[m_Ms.size()-1] = m_fml;
             m_solvers.back()->assert_expr(m_fml);
         }
 
@@ -339,8 +327,13 @@ namespace qe {
         smt::kernel& solver(unsigned i) { return *m_solvers[i]; }
 
         void reset() {
+            for (unsigned i = 0; i < m_solvers.size(); ++i) {
+                dealloc(m_solvers[i]);
+            }
             m_fml = 0;
             m_Ms.reset();
+            m_fparamv.reset();
+            m_solvers.reset();
             m_vars.reset();
         }
 
@@ -359,7 +352,7 @@ namespace qe {
         void extract_alt_form(expr* fml) {
             quantifier_hoister hoist(m);
             expr_ref result(m);
-            bool is_fa;   
+            bool is_fa = false;   
             unsigned parity = 0;
             m_fml = fml;
             while (true) {
@@ -399,7 +392,7 @@ namespace qe {
         expr_ref qt(unsigned i, expr* ctx, model_ref& model) {
             model_ref model1;
             while (true) {
-                IF_VERBOSE(1, verbose_stream() << "qt " << i << "\n";);
+                IF_VERBOSE(1, verbose_stream() << "(qt " << i << ")\n";);
                 TRACE("qe",
                       tout << i << " " << mk_pp(ctx, m) << "\n";
                       display(tout););
@@ -610,8 +603,7 @@ namespace qe {
                 m_solver.assert_expr(m.mk_iff(proxies.back(), m_assignments[i].get()));
                 TRACE("qe", tout << "assignment: " << mk_pp(m_assignments[i].get(), m) << "\n";);
             }
-            lbool is_sat = m_solver.check(proxies.size(), proxies.c_ptr());
-            SASSERT(is_sat == l_false);
+            VERIFY(l_false == m_solver.check(proxies.size(), proxies.c_ptr()));
             unsigned core_size = m_solver.get_unsat_core_size();
             for (unsigned i = 0; i < core_size; ++i) {
                 core.push_back(proxy_map.find(m_solver.get_unsat_core_expr(i)));
@@ -638,7 +630,8 @@ namespace qe {
                 TRACE("qe", tout << mk_pp(_fml, m) << "\n-- context simplify -->\n" << mk_pp(fml, m) << "\n";);
             }
             solver_context ctx(*this, idx);            
-            ctx.add_plugin(mk_arith_plugin(ctx, false, m_fparams));
+            smt_params fparams(m_fparams);            
+            ctx.add_plugin(mk_arith_plugin(ctx, false, fparams));
             ctx.add_plugin(mk_bool_plugin(ctx));
             ctx.add_plugin(mk_bv_plugin(ctx));
             ctx.init(fml, idx);
@@ -667,8 +660,8 @@ namespace qe {
         }
 
         void checkpoint() {
-            if (m_cancel) {
-                throw tactic_exception(TACTIC_CANCELED_MSG);
+            if (m.canceled()) {
+                throw tactic_exception(m.limit().get_cancel_msg());
             }
             cooperate("qe-sat");
         }

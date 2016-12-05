@@ -17,13 +17,17 @@ Author:
 Notes:
 
 --*/
-#ifndef _QFUF_TACTIC_
-#define _QFUF_TACTIC_
+#ifndef QFUF_TACTIC_H_
+#define QFUF_TACTIC_H_
 
 #include"params.h"
 class ast_manager;
 class tactic;
 
 tactic * mk_qfuf_tactic(ast_manager & m, params_ref const & p);
+
+/*
+  ADD_TACTIC("qfuf", "builtin strategy for solving QF_UF problems.", "mk_qfuf_tactic(m, p)")
+*/
 
 #endif

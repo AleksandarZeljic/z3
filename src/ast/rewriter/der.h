@@ -18,8 +18,8 @@ Revision History:
     Christoph Wintersteiger, 2010-03-30: Added Destr. Multi-Equality Resolution
 
 --*/
-#ifndef _DER_H_
-#define _DER_H_
+#ifndef DER_H_
+#define DER_H_
 
 #include"ast.h"
 #include"var_subst.h"
@@ -174,14 +174,11 @@ public:
 
     void operator()(expr * t, expr_ref & result, proof_ref & result_pr);
 
-    void cancel() { set_cancel(true); }
-    void reset_cancel() { set_cancel(false); }
-    void set_cancel(bool f);
     void cleanup();
     void reset();
 };
 
 typedef der_rewriter der_star; 
 
-#endif /* _DER_H_ */
+#endif /* DER_H_ */
 

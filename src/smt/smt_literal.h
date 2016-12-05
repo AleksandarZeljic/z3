@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _SMT_LITERAL_H_
-#define _SMT_LITERAL_H_
+#ifndef SMT_LITERAL_H_
+#define SMT_LITERAL_H_
 
 #include"ast.h"
 #include"smt_types.h"
@@ -103,7 +103,7 @@ namespace smt {
 
     void display_compact(std::ostream & out, unsigned num_lits, literal const * lits, expr * const * bool_var2expr_map);
 
-    void display_verbose(std::ostream & out, ast_manager& m, unsigned num_lits, literal const * lits, expr * const * bool_var2expr_map);
+    void display_verbose(std::ostream & out, ast_manager& m, unsigned num_lits, literal const * lits, expr * const * bool_var2expr_map, char const* sep = " ");
 
     template<typename T>
     void neg_literals(unsigned num_lits, literal const * lits, T & result) {
@@ -118,5 +118,5 @@ namespace smt {
     bool backward_subsumption(unsigned num_lits1, literal const * lits1, unsigned num_lits2, literal const * lits2);
 };
 
-#endif /* _SMT_LITERAL_H_ */
+#endif /* SMT_LITERAL_H_ */
 

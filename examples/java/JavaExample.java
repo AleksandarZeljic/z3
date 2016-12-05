@@ -188,7 +188,7 @@ class JavaExample
             /* do something with the context */
 
             /* be kind to dispose manually and not wait for the GC. */
-            ctx.dispose();
+            ctx.close();
         }
     }
 
@@ -2163,13 +2163,14 @@ class JavaExample
 
         FiniteDomainSort s = ctx.mkFiniteDomainSort("S", 10);
         FiniteDomainSort t = ctx.mkFiniteDomainSort("T", 10);
-        Expr s1 = ctx.mkNumeral(1, s);
-        Expr t1 = ctx.mkNumeral(1, t);
+        FiniteDomainNum s1 = (FiniteDomainNum)ctx.mkNumeral(1, s);
+        FiniteDomainNum t1 = (FiniteDomainNum)ctx.mkNumeral(1, t);
         System.out.println(s);
         System.out.println(t);
-        System.out.println(s1);
-        System.out.println(ctx.mkNumeral(2, s));
+        System.out.println(s1);        
         System.out.println(t1);
+        System.out.println(s1.getInt());
+        System.out.println(t1.getInt());
         // But you cannot mix numerals of different sorts
         // even if the size of their domains are the same:
         // System.out.println(ctx.mkEq(s1, t1));
@@ -2254,7 +2255,30 @@ class JavaExample
 
         System.out.println("OK, model: " + s.getModel().toString());        
     }
-    
+
+    public void optimizeExample(Context ctx) 
+    {
+        System.out.println("Opt");
+
+        Optimize opt = ctx.mkOptimize();
+
+        // Set constraints.
+        IntExpr xExp = ctx.mkIntConst("x");
+        IntExpr yExp = ctx.mkIntConst("y");
+
+        opt.Add(ctx.mkEq(ctx.mkAdd(xExp, yExp), ctx.mkInt(10)),
+                ctx.mkGe(xExp, ctx.mkInt(0)),
+                ctx.mkGe(yExp, ctx.mkInt(0)));
+
+        // Set objectives.
+        Optimize.Handle mx = opt.MkMaximize(xExp);
+        Optimize.Handle my = opt.MkMaximize(yExp);
+
+        System.out.println(opt.Check()); 
+        System.out.println(mx);
+        System.out.println(my);
+    }
+
     public static void main(String[] args)
     {
         JavaExample p = new JavaExample();
@@ -2267,6 +2291,8 @@ class JavaExample
             System.out.println(Version.getMajor());
             System.out.print("Z3 Full Version: ");
             System.out.println(Version.getString());
+            System.out.print("Z3 Full Version String: ");
+            System.out.println(Version.getFullVersion());
 
             p.simpleExample();
 
@@ -2274,6 +2300,8 @@ class JavaExample
                 HashMap<String, String> cfg = new HashMap<String, String>();
                 cfg.put("model", "true");
                 Context ctx = new Context(cfg);
+		
+		p.optimizeExample(ctx);
                 p.basicTests(ctx);
                 p.castingTest(ctx);
                 p.sudokuExample(ctx);

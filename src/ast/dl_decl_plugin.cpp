@@ -324,7 +324,7 @@ namespace datalog {
         if (!is_rel_sort(r, sorts)) {
             return 0;
         }
-        unsigned index0;
+        unsigned index0 = 0;
         sort* last_sort = 0;
         SASSERT(num_params > 0);
         for (unsigned i = 0; i < num_params; ++i) {
@@ -461,7 +461,7 @@ namespace datalog {
             return 0;
         }
         if (!ps.is_ast() || !is_sort(ps.get_ast()) || !is_fin_sort(to_sort(ps.get_ast()))) {
-            m_manager->raise_exception("second paramter should be a finite domain sort");
+            m_manager->raise_exception("second parameter should be a finite domain sort");
             return 0;
         }
         sort* s = to_sort(ps.get_ast());
@@ -489,6 +489,7 @@ namespace datalog {
         func_decl_info info(m_family_id, OP_RA_CLONE, 0, 0);
         return m_manager->mk_func_decl(m_clone_sym, 1, &s, s, info);
     }
+
 
     func_decl * dl_decl_plugin::mk_func_decl(
         decl_kind k, unsigned num_parameters, parameter const * parameters, 
@@ -617,6 +618,7 @@ namespace datalog {
                 break;
             }
 
+
             default:
                 m_manager->raise_exception("operator not recognized");
                 return 0;
@@ -627,7 +629,6 @@ namespace datalog {
     }
 
     void dl_decl_plugin::get_op_names(svector<builtin_name> & op_names, symbol const & logic) {
-
     }
 
     void dl_decl_plugin::get_sort_names(svector<builtin_name> & sort_names, symbol const & logic) {

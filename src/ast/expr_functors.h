@@ -19,8 +19,8 @@ Revision History:
 
 --*/
 
-#ifndef __EXPR_FUNCTORS_H__
-#define __EXPR_FUNCTORS_H__
+#ifndef EXPR_FUNCTORS_H_
+#define EXPR_FUNCTORS_H_
 
 #include "ast.h"
 #include "expr_map.h"
@@ -30,6 +30,14 @@ public:
     virtual bool operator()(expr* e) = 0;
     virtual ~i_expr_pred() {}
 };
+
+
+class i_sort_pred {
+public:
+    virtual bool operator()(sort* s) = 0;
+    virtual ~i_sort_pred() {}
+};
+
 
 /**
    \brief Memoizing predicate functor on sub-expressions.

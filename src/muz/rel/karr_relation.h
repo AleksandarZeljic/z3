@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _KARR_RELATION_H_
-#define _KARR_RELATION_H_
+#ifndef KARR_RELATION_H_
+#define KARR_RELATION_H_
 
 #include"dl_mk_karr_invariants.h"
 #include"dl_relation_manager.h"
@@ -27,8 +27,8 @@ namespace datalog {
     class karr_relation;
 
     class karr_relation_plugin : public relation_plugin {
-        arith_util a;
         hilbert_basis m_hb;
+        arith_util a;
 
         class join_fn;
         class project_fn;
@@ -41,6 +41,7 @@ namespace datalog {
     public:
         karr_relation_plugin(relation_manager& rm):
             relation_plugin(karr_relation_plugin::get_name(), rm),
+            m_hb(get_ast_manager().limit()),
             a(get_ast_manager())
         {}            
         
@@ -49,8 +50,6 @@ namespace datalog {
         }
 
         static symbol get_name() { return symbol("karr_relation"); }
-
-        virtual void set_cancel(bool f);
 
         virtual relation_base * mk_empty(const relation_signature & s);
 
@@ -84,5 +83,5 @@ namespace datalog {
 
 };
 
-#endif /* _DL_MK_KARR_INVARIANTS_H_ */
+#endif /* DL_MK_KARR_INVARIANTS_H_ */
 

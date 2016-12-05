@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _MODEL_EVALUATOR_H_
-#define _MODEL_EVALUATOR_H_
+#ifndef MODEL_EVALUATOR_H_
+#define MODEL_EVALUATOR_H_
 
 #include"ast.h"
 #include"rewriter_types.h"
@@ -30,7 +30,7 @@ class model_evaluator {
     struct imp;
     imp *  m_imp;
 public:
-    model_evaluator(model & m, params_ref const & p = params_ref());
+    model_evaluator(model_core & m, params_ref const & p = params_ref());
     ~model_evaluator();
 
     ast_manager & m () const;
@@ -41,9 +41,8 @@ public:
 
     void operator()(expr * t, expr_ref & r);
 
-    void set_cancel(bool f);
-    void cancel() { set_cancel(true); }
-    void reset_cancel() { set_cancel(false); }
+    expr_ref operator()(expr* t);
+
     void cleanup(params_ref const & p = params_ref());
     void reset(params_ref const & p = params_ref());
     

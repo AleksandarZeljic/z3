@@ -120,7 +120,7 @@ namespace Duality {
             a.resize(args.size());
         for(unsigned i = 0; i < args.size(); i++)
             a[i] = to_expr(args[i].raw());
-        return make(op,args.size(), args.size() ? &a[0] : 0);
+        return make(op,args.size(), args.size() ? VEC2PTR(a) : 0);
     }
 
     expr context::make(decl_kind op){
@@ -165,11 +165,11 @@ namespace Duality {
             bound_asts.push_back(a);
         }
         expr_ref abs_body(m());
-        expr_abstract(m(), 0, num_bound, &bound_asts[0], to_expr(body.raw()), abs_body);
+        expr_abstract(m(), 0, num_bound, VEC2PTR(bound_asts), to_expr(body.raw()), abs_body);
         expr_ref result(m());
         result = m().mk_quantifier(
             op == Forall, 
-            names.size(), &types[0], &names[0], abs_body.get(),            
+            names.size(), VEC2PTR(types), VEC2PTR(names), abs_body.get(),            
             0, 
             ::symbol(),
             ::symbol(),
@@ -195,7 +195,7 @@ namespace Duality {
         expr_ref result(m());
         result = m().mk_quantifier(
             op == Forall, 
-            names.size(), &types[0], &names[0], to_expr(body.raw()),            
+            names.size(), VEC2PTR(types), VEC2PTR(names), to_expr(body.raw()),            
             0, 
             ::symbol(),
             ::symbol(),
@@ -305,7 +305,7 @@ namespace Duality {
         std::vector< ::expr *> _args(n);
         for(unsigned i = 0; i < n; i++)
             _args[i] = to_expr(args[i].raw());
-        return ctx().cook(m().mk_app(to_func_decl(raw()),n,&_args[0]));
+        return ctx().cook(m().mk_app(to_func_decl(raw()),n,VEC2PTR(_args)));
     }
 
     int solver::get_num_decisions(){
@@ -377,7 +377,7 @@ namespace Duality {
         std::vector< ::expr *> _patterns(num_patterns);
         for(unsigned i = 0; i < num_patterns; i++)
             _patterns[i] = to_expr(patterns[i].raw());
-        return q.ctx().cook(q.m().update_quantifier(thing, is_forall, num_patterns, &_patterns[0], to_expr(b.raw())));
+        return q.ctx().cook(q.m().update_quantifier(thing, is_forall, num_patterns, VEC2PTR(_patterns), to_expr(b.raw())));
     }
 
     expr clone_quantifier(decl_kind dk, const expr &q, const expr &b){
@@ -414,7 +414,7 @@ namespace Duality {
             _domain[i] = to_sort(domain[i].raw());
         ::func_decl* d = m().mk_fresh_func_decl(prefix, 
                                                 _domain.size(), 
-                                                &_domain[0],
+                                                VEC2PTR(_domain),
                                                 to_sort(range.raw()));
         return func_decl(*this,d);
     }
@@ -453,16 +453,15 @@ namespace Duality {
         lb = Z3_interpolate(
             ctx(),
             _assumptions.size(),
-            &_assumptions[0],
+            VEC2PTR(_assumptions),
             0,
             0,
-            &_interpolants[0],
+            VEC2PTR(_interpolants),
             &_model,
             &_labels,
             incremental,
             _theory.size(),
-            &_theory[0]
-                            );
+            VEC2PTR(_theory));
     
         if(lb == Z3_L_FALSE){
             interpolants.resize(_interpolants.size());
@@ -562,7 +561,14 @@ namespace Duality {
                 opts.set("weak","1"); 
       
             ::ast *proof = m_solver->get_proof();
-            iz3interpolate(m(),proof,_assumptions,_parents,_interpolants,_theory,&opts);
+            try {
+                iz3interpolate(m(),proof,_assumptions,_parents,_interpolants,_theory,&opts);
+            }
+            // If there's an interpolation bug, throw a char *
+            // exception so duality can catch it and restart. 
+            catch (const interpolation_failure &f) {
+                throw f.msg();
+            }
       
             std::vector<expr> linearized_interpolants(_interpolants.size());
             for(unsigned i = 0; i < _interpolants.size(); i++)
@@ -727,7 +733,7 @@ namespace Duality {
         if(!started){
             sw.start();
             started = true;
-	}
+        }
         return sw.get_current_seconds();
     }
 

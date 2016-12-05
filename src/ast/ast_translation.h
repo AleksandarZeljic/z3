@@ -18,8 +18,8 @@ Revision History:
     2011-05-26: New local translation class.
 
 --*/
-#ifndef _AST_TRANSLATION_H_
-#define _AST_TRANSLATION_H_
+#ifndef AST_TRANSLATION_H_
+#define AST_TRANSLATION_H_
 
 #include"ast.h"
 
@@ -58,9 +58,9 @@ public:
 
     template<typename T>
     T * operator()(T const * n) { 
-        SASSERT(from().contains(const_cast<T*>(n)));
+        SASSERT(!n || from().contains(const_cast<T*>(n)));
         ast * r = process(n);
-        SASSERT(to().contains(const_cast<ast*>(r)));
+        SASSERT((!n && !r) || to().contains(const_cast<ast*>(r)));
         return static_cast<T*>(r);
     }
 

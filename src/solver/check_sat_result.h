@@ -16,8 +16,8 @@ Author:
 Notes:
 
 --*/
-#ifndef _CHECK_SAT_RESULT_H_
-#define _CHECK_SAT_RESULT_H_
+#ifndef CHECK_SAT_RESULT_H_
+#define CHECK_SAT_RESULT_H_
 
 #include"model.h"
 #include"lbool.h"
@@ -48,10 +48,18 @@ public:
     lbool status() const { return m_status; }
     virtual void collect_statistics(statistics & st) const = 0;
     virtual void get_unsat_core(ptr_vector<expr> & r) = 0;
+    virtual void get_unsat_core(expr_ref_vector & r) {
+        ptr_vector<expr> core;
+        get_unsat_core(core);
+        r.append(core.size(), core.c_ptr());
+    }
     virtual void get_model(model_ref & m) = 0;
     virtual proof * get_proof() = 0;
     virtual std::string reason_unknown() const = 0;
+    virtual void set_reason_unknown(char const* msg) = 0;
     virtual void get_labels(svector<symbol> & r) = 0;
+    virtual ast_manager& get_manager() const = 0;
+
 };
 
 /**
@@ -63,15 +71,18 @@ struct simple_check_sat_result : public check_sat_result {
     expr_ref_vector m_core;
     proof_ref       m_proof;
     std::string     m_unknown;
+    
 
     simple_check_sat_result(ast_manager & m);
     virtual ~simple_check_sat_result();
+    virtual ast_manager& get_manager() const { return m_proof.get_manager(); }
     virtual void collect_statistics(statistics & st) const;
     virtual void get_unsat_core(ptr_vector<expr> & r);
     virtual void get_model(model_ref & m);
     virtual proof * get_proof();
     virtual std::string reason_unknown() const;
     virtual void get_labels(svector<symbol> & r);
+    virtual void set_reason_unknown(char const* msg) { m_unknown = msg; }
 };
 
 #endif

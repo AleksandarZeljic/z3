@@ -293,7 +293,7 @@ namespace datalog {
 
         void key_to_reserve(const key_value & key) const {
             m_keys.ensure_reserve();
-            m_keys.write_into_reserve(reinterpret_cast<char *>(key.c_ptr()));
+            m_keys.write_into_reserve((char *)(key.c_ptr()));
         }
 
         offset_vector & get_matching_offset_vector(const key_value & key) {
@@ -327,8 +327,7 @@ namespace datalog {
             key_value key;
             key.resize(key_len);
 
-            offset_vector * index_entry;
-            DEBUG_CODE( index_entry = 0; );
+            offset_vector * index_entry = 0;
             bool key_modified = true;
 
             for (; ofs!=after_last; ofs+=t.m_fact_size) {
@@ -509,7 +508,7 @@ namespace datalog {
     }
 
     bool sparse_table::add_fact(const char * data) {
-        verbose_action  _va("add_fact", 3);
+        verbose_action  _va("add_fact", 10);
         m_data.write_into_reserve(data);
         return add_reserve_content();
     }
@@ -829,7 +828,6 @@ namespace datalog {
 
         virtual table_base * operator()(const table_base & tb1, const table_base & tb2) {
 
-            verbose_action  _va("join_project");
             const sparse_table & t1 = get(tb1);
             const sparse_table & t2 = get(tb2);
 

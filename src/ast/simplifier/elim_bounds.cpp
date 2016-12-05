@@ -110,6 +110,7 @@ void elim_bounds::operator()(quantifier * q, expr_ref & r) {
         return;
     }
     expr * n = q->get_expr();
+    unsigned num_vars = q->get_num_decls();
     ptr_buffer<expr> atoms;
     if (m_manager.is_or(n))
         atoms.append(to_app(n)->get_num_args(), to_app(n)->get_args());
@@ -138,11 +139,11 @@ void elim_bounds::operator()(quantifier * q, expr_ref & r) {
         var * lower = 0;
         var * upper = 0;
         if (is_bound(a, lower, upper)) {
-            if (lower != 0 && !m_used_vars.contains(lower->get_idx())) {
+            if (lower != 0 && !m_used_vars.contains(lower->get_idx()) && lower->get_idx() < num_vars) {
                 ADD_CANDIDATE(lower);
                 m_lowers.insert(lower);
             }
-            if (upper != 0 && !m_used_vars.contains(upper->get_idx())) {
+            if (upper != 0 && !m_used_vars.contains(upper->get_idx()) && upper->get_idx() < num_vars) {
                 ADD_CANDIDATE(upper);
                 m_uppers.insert(upper);
             }
@@ -176,6 +177,7 @@ void elim_bounds::operator()(quantifier * q, expr_ref & r) {
     switch (atoms.size()) {
     case 0:
         r = m_manager.mk_false();
+        TRACE("elim_bounds", tout << mk_pp(q, m_manager) << "\n" << mk_pp(r, m_manager) << "\n";);
         return;
     case 1:
         new_body = atoms[0];
@@ -203,20 +205,20 @@ void elim_bounds_star::reduce1_quantifier(quantifier * q) {
         cache_result(q, q, 0); 
         return;
     }
-    quantifier_ref new_q(m_manager);
+    quantifier_ref new_q(m);
     expr * new_body = 0;
     proof * new_pr;
     get_cached(q->get_expr(), new_body, new_pr);
-    new_q = m_manager.update_quantifier(q, new_body);
-    expr_ref r(m_manager);
+    new_q = m.update_quantifier(q, new_body);
+    expr_ref r(m);
     m_elim(new_q, r);
     if (q == r.get()) {
         cache_result(q, q, 0);
         return;
     }
-    proof_ref pr(m_manager);
-    if (m_manager.fine_grain_proofs())
-        pr = m_manager.mk_rewrite(q, r); // TODO: improve justification
+    proof_ref pr(m);
+    if (m.fine_grain_proofs())
+        pr = m.mk_rewrite(q, r); // TODO: improve justification
     cache_result(q, r, pr);
 }
 

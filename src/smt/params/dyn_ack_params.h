@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _DYN_ACK_PARAMS_H_
-#define _DYN_ACK_PARAMS_H_
+#ifndef DYN_ACK_PARAMS_H_
+#define DYN_ACK_PARAMS_H_
 
 #include"params.h"
 
@@ -47,8 +47,10 @@ public:
     }
 
     void updt_params(params_ref const & _p);
+
+    void display(std::ostream & out) const;
 };
 
 
-#endif /* _DYN_ACK_PARAMS_H_ */
+#endif /* DYN_ACK_PARAMS_H_ */
 

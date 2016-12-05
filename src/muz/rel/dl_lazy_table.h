@@ -18,8 +18,8 @@ Revision History:
 
 --*/
 
-#ifndef _DL_LAZY_TABLE_H_
-#define _DL_LAZY_TABLE_H_
+#ifndef DL_LAZY_TABLE_H_
+#define DL_LAZY_TABLE_H_
 
 #include "dl_base.h"
 #include "ref.h"
@@ -54,8 +54,6 @@ namespace datalog {
         
         virtual table_base * mk_empty(const table_signature & s);
                 
-        virtual void set_cancel(bool f) { m_plugin.set_cancel(f); }
-
         static table_plugin* mk_sparse(relation_manager& rm);
         
     protected:

@@ -80,45 +80,27 @@ public:
 
     virtual void cleanup() {        
         sls_engine * d = alloc(sls_engine, m, m_params);
-        #pragma omp critical (tactic_cancel)
-        {
-            std::swap(d, m_engine);
-        }
+        std::swap(d, m_engine);            
         dealloc(d);
     }
     
     virtual void collect_statistics(statistics & st) const {
-        sls_engine::stats const & stats = m_engine->get_stats();
-        double seconds = stats.m_stopwatch.get_current_seconds();            
-        st.update("sls restarts", stats.m_restarts);
-        st.update("sls full evals", stats.m_full_evals);
-        st.update("sls incr evals", stats.m_incr_evals);
-        st.update("sls incr evals/sec", stats.m_incr_evals / seconds);
-        st.update("sls FLIP moves", stats.m_flips);
-        st.update("sls INC moves", stats.m_incs);
-        st.update("sls DEC moves", stats.m_decs);
-        st.update("sls INV moves", stats.m_invs);
-        st.update("sls moves", stats.m_moves);
-        st.update("sls moves/sec", stats.m_moves / seconds);
+        m_engine->collect_statistics(st);
     }
 
     virtual void reset_statistics() {
         m_engine->reset_statistics();
     }
 
-    virtual void set_cancel(bool f) {
-        if (m_engine)
-            m_engine->set_cancel(f);
-    }
 };
 
-tactic * mk_sls_tactic(ast_manager & m, params_ref const & p) {
+static tactic * mk_sls_tactic(ast_manager & m, params_ref const & p) {
     return and_then(fail_if_not(mk_is_qfbv_probe()), // Currently only QF_BV is supported.
                     clean(alloc(sls_tactic, m, p)));
 }
 
 
-tactic * mk_preamble(ast_manager & m, params_ref const & p) {
+static tactic * mk_preamble(ast_manager & m, params_ref const & p) {
     params_ref main_p;
     main_p.set_bool("elim_and", true);
     // main_p.set_bool("pull_cheap_ite", true);

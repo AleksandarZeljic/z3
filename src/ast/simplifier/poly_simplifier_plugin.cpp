@@ -69,14 +69,20 @@ expr * poly_simplifier_plugin::mk_mul(unsigned num_args, expr * const * args) {
 }
 
 expr * poly_simplifier_plugin::mk_mul(numeral const & c, expr * body) {
-    numeral c_prime;
+    numeral c_prime, d;
     c_prime = norm(c);
     if (c_prime.is_zero())
         return 0;
     if (body == 0)
         return mk_numeral(c_prime);
     if (c_prime.is_one())
-        return body;
+         return body;
+    if (is_numeral(body, d)) {
+        c_prime = norm(c_prime*d);
+        if (c_prime.is_zero())
+            return 0;
+        return mk_numeral(c_prime);
+    }
     set_curr_sort(body);
     expr * args[2] = { mk_numeral(c_prime), body };
     return mk_mul(2, args);
@@ -601,12 +607,25 @@ void poly_simplifier_plugin::append_to_monomial(expr * n, numeral & k, ptr_buffe
     k *= val;
     n  = get_monomial_body(n);
 
-    if (is_mul(n)) {
-        for (unsigned i = 0; i < to_app(n)->get_num_args(); i++)
-            result.push_back(to_app(n)->get_arg(i));
-    }
-    else {
-        result.push_back(n);
+    unsigned hd = result.size();
+    result.push_back(n);
+    while (hd < result.size()) {
+        n = result[hd];
+        if (is_mul(n)) {
+            result[hd] = result.back();
+            result.pop_back();
+            for (unsigned i = 0; i < to_app(n)->get_num_args(); i++) {
+                result.push_back(to_app(n)->get_arg(i));
+            }
+        }
+        else if (is_numeral(n, val)) {
+            k *= val;
+            result[hd] = result.back();
+            result.pop_back();
+        }
+        else {
+            ++hd;
+        }
     }
 }
 

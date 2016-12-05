@@ -15,8 +15,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _API_AST_MAP_H_
-#define _API_AST_MAP_H_
+#ifndef API_AST_MAP_H_
+#define API_AST_MAP_H_
 
 #include"api_util.h"
 #include"obj_hashtable.h"
@@ -24,7 +24,7 @@ Revision History:
 struct Z3_ast_map_ref : public api::object {
     ast_manager &            m;
     obj_map<ast, ast*> m_map;
-    Z3_ast_map_ref(ast_manager & _m):m(_m) {}
+    Z3_ast_map_ref(api::context& c, ast_manager & _m): api::object(c), m(_m) {}
     virtual ~Z3_ast_map_ref();
 };
 

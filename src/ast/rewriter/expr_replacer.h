@@ -16,8 +16,8 @@ Author:
 Notes:
 
 --*/
-#ifndef _EXPR_REPLACER_H_
-#define _EXPR_REPLACER_H_
+#ifndef EXPR_REPLACER_H_
+#define EXPR_REPLACER_H_
 
 #include"ast.h"
 #include"expr_substitution.h"
@@ -39,9 +39,6 @@ public:
     virtual void operator()(expr * t, expr_ref & result);
     virtual void operator()(expr_ref & t) { expr_ref s(t, m()); (*this)(s, t); }
 
-    void cancel() { set_cancel(true); }
-    void reset_cancel() { set_cancel(false); }
-    virtual void set_cancel(bool f) = 0;
     virtual unsigned get_num_steps() const { return 0; }
     virtual void reset() = 0;
     

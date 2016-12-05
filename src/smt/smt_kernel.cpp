@@ -32,6 +32,10 @@ namespace smt {
             m_params(p) {
         }
 
+        static void copy(imp& src, imp& dst) {
+            context::copy(src.m_kernel, dst.m_kernel);
+        }
+
         smt_params & fparams() {
             return m_kernel.get_fparams();
         }
@@ -50,6 +54,18 @@ namespace smt {
         
         void set_progress_callback(progress_callback * callback) {
             return m_kernel.set_progress_callback(callback);
+        }
+
+        void display(std::ostream & out) const {
+            // m_kernel.display(out); <<< for external users it is just junk
+            // TODO: it will be replaced with assertion_stack.display
+            unsigned num = m_kernel.get_num_asserted_formulas();
+            expr * const * fms = m_kernel.get_asserted_formulas();
+            out << "(kernel";
+            for (unsigned i = 0; i < num; i++) {
+                out << "\n  " << mk_ismt2_pp(fms[i], m(), 2);
+            }
+            out << ")";
         }
         
         void assert_expr(expr * e) {
@@ -94,6 +110,19 @@ namespace smt {
         lbool check(unsigned num_assumptions, expr * const * assumptions) {
             return m_kernel.check(num_assumptions, assumptions);
         }
+
+        lbool get_consequences(expr_ref_vector const& assumptions, expr_ref_vector const& vars, expr_ref_vector& conseq, expr_ref_vector& unfixed) {
+            return m_kernel.get_consequences(assumptions, vars, conseq, unfixed);
+        }
+
+        lbool preferred_sat(expr_ref_vector const& asms, vector<expr_ref_vector>& cores) {
+            return m_kernel.preferred_sat(asms, cores);
+        }
+
+
+        lbool find_mutexes(expr_ref_vector const& vars, vector<expr_ref_vector>& mutexes) {
+            return m_kernel.find_mutexes(vars, mutexes);
+        }
         
         void get_model(model_ref & m) const {
             m_kernel.get_model(m);
@@ -119,6 +148,10 @@ namespace smt {
             return m_kernel.last_failure_as_string();
         }
 
+        void set_reason_unknown(char const* msg) {
+            m_kernel.set_reason_unknown(msg);
+        }
+
         void get_assignments(expr_ref_vector & result) {
             m_kernel.get_assignments(result);
         }
@@ -138,18 +171,6 @@ namespace smt {
         void get_guessed_literals(expr_ref_vector & result) {
             m_kernel.get_guessed_literals(result);
         }
-
-        void display(std::ostream & out) const {
-            // m_kernel.display(out); <<< for external users it is just junk
-            // TODO: it will be replaced with assertion_stack.display
-            unsigned num = m_kernel.get_num_asserted_formulas();
-            expr * const * fms = m_kernel.get_asserted_formulas();
-            out << "(kernel";
-            for (unsigned i = 0; i < num; i++) {
-                out << "\n  " << mk_ismt2_pp(fms[i], m(), 2);
-            }
-            out << ")";
-        }
         
         void collect_statistics(::statistics & st) const {
             m_kernel.collect_statistics(st);
@@ -164,10 +185,6 @@ namespace smt {
         
         void display_istatistics(std::ostream & out) const {
             m_kernel.display_istatistics(out);
-        }
-
-        void set_cancel(bool f) {
-            m_kernel.set_cancel_flag(f);
         }
         
         bool canceled() {
@@ -193,6 +210,11 @@ namespace smt {
         return m_imp->m();
     }
 
+    void  kernel::copy(kernel& src, kernel& dst) {
+        imp::copy(*src.m_imp, *dst.m_imp);
+    }
+
+
     bool kernel::set_logic(symbol logic) {
         return m_imp->set_logic(logic);
     }
@@ -203,6 +225,12 @@ namespace smt {
 
     void kernel::assert_expr(expr * e) {
         m_imp->assert_expr(e);
+    }
+
+    void kernel::assert_expr(expr_ref_vector const& es) {
+        for (unsigned i = 0; i < es.size(); ++i) {
+            m_imp->assert_expr(es[i]);
+        }
     }
 
     void kernel::assert_expr(expr * e, proof * pr) {
@@ -255,6 +283,18 @@ namespace smt {
         return r;
     }
 
+    lbool kernel::get_consequences(expr_ref_vector const& assumptions, expr_ref_vector const& vars, expr_ref_vector& conseq, expr_ref_vector& unfixed) {
+        return m_imp->get_consequences(assumptions, vars, conseq, unfixed);
+    }
+
+    lbool kernel::preferred_sat(expr_ref_vector const& asms, vector<expr_ref_vector>& cores) {
+        return m_imp->preferred_sat(asms, cores);
+    }
+
+    lbool kernel::find_mutexes(expr_ref_vector const& vars, vector<expr_ref_vector>& mutexes) {
+        return m_imp->find_mutexes(vars, mutexes);
+    }
+
     void kernel::get_model(model_ref & m) const {
         m_imp->get_model(m);
     }
@@ -277,6 +317,10 @@ namespace smt {
 
     std::string kernel::last_failure_as_string() const {
         return m_imp->last_failure_as_string();
+    }
+
+    void kernel::set_reason_unknown(char const* msg) {
+        m_imp->set_reason_unknown(msg);
     }
 
     void kernel::get_assignments(expr_ref_vector & result) {
@@ -317,14 +361,6 @@ namespace smt {
 
     void kernel::display_istatistics(std::ostream & out) const {
         m_imp->display_istatistics(out);
-    }
-
-    void kernel::set_cancel(bool f) {
-        #pragma omp critical (smt_kernel)
-        {
-            if (m_imp)
-                m_imp->set_cancel(f);
-        }
     }
 
     bool kernel::canceled() const {

@@ -20,8 +20,7 @@ package com.microsoft.z3;
 /**
  * Vectors of ASTs.
  **/
-public class ASTVector extends Z3Object
-{
+public class ASTVector extends Z3Object {
     /**
      * The size of the vector
      **/
@@ -87,15 +86,9 @@ public class ASTVector extends Z3Object
     /**
      * Retrieves a string representation of the vector.
      **/
-    public String toString()
-    {
-        try
-        {
-            return Native.astVectorToString(getContext().nCtx(), getNativeObject());
-        } catch (Z3Exception e)
-        {
-            return "Z3Exception: " + e.getMessage();
-        }
+    @Override
+    public String toString() {
+        return Native.astVectorToString(getContext().nCtx(), getNativeObject());
     }
 
     ASTVector(Context ctx, long obj)
@@ -108,15 +101,144 @@ public class ASTVector extends Z3Object
         super(ctx, Native.mkAstVector(ctx.nCtx()));
     }
 
-    void incRef(long o)
-    {
-        getContext().getASTVectorDRQ().incAndClear(getContext(), o);
-        super.incRef(o);
+    @Override
+    void incRef() {
+        Native.astVectorIncRef(getContext().nCtx(), getNativeObject());
     }
 
-    void decRef(long o)
+    @Override
+    void addToReferenceQueue() {
+        getContext().getASTVectorDRQ().storeReference(getContext(), this);
+    }
+
+    /**
+     * Translates the AST vector into an AST[]
+     * */
+    public AST[] ToArray()
     {
-        getContext().getASTVectorDRQ().add(o);
-        super.decRef(o);
+        int n = size();
+        AST[] res = new AST[n];
+        for (int i = 0; i < n; i++)
+            res[i] = AST.create(getContext(), get(i).getNativeObject());
+        return res;
+    }
+    
+    /**
+     * Translates the AST vector into an Expr[]
+     * */
+    public Expr[] ToExprArray() {
+        int n = size();
+        Expr[] res = new Expr[n];
+        for (int i = 0; i < n; i++)
+            res[i] = Expr.create(getContext(), get(i).getNativeObject());
+        return res;	
+    }
+
+    /**
+     * Translates the AST vector into an BoolExpr[]
+     * */  
+    public BoolExpr[] ToBoolExprArray()
+    {
+        int n = size();
+        BoolExpr[] res = new BoolExpr[n];
+        for (int i = 0; i < n; i++)
+            res[i] = (BoolExpr) Expr.create(getContext(), get(i).getNativeObject());
+        return res;
+    }
+
+    /**
+     * Translates the AST vector into an BitVecExpr[]
+     * */    
+    public BitVecExpr[] ToBitVecExprArray()
+    {
+        int n = size();
+        BitVecExpr[] res = new BitVecExpr[n];
+        for (int i = 0; i < n; i++)
+            res[i] = (BitVecExpr)Expr.create(getContext(), get(i).getNativeObject());
+        return res;
+    }
+
+    /**
+     * Translates the AST vector into an ArithExpr[]
+     * */   
+    public ArithExpr[] ToArithExprExprArray()
+    {
+        int n = size();
+        ArithExpr[] res = new ArithExpr[n];
+        for (int i = 0; i < n; i++)
+            res[i] = (ArithExpr)Expr.create(getContext(), get(i).getNativeObject());
+        return res;
+    }
+
+    /**
+     * Translates the AST vector into an ArrayExpr[]
+     * */  
+    public ArrayExpr[] ToArrayExprArray()
+    {
+        int n = size();
+        ArrayExpr[] res = new ArrayExpr[n];
+        for (int i = 0; i < n; i++)
+            res[i] = (ArrayExpr)Expr.create(getContext(), get(i).getNativeObject());
+        return res;
+    }
+
+    /**
+     * Translates the AST vector into an DatatypeExpr[]
+     * */ 
+    public DatatypeExpr[] ToDatatypeExprArray()
+    {
+        int n = size();
+        DatatypeExpr[] res = new DatatypeExpr[n];
+        for (int i = 0; i < n; i++)
+            res[i] = (DatatypeExpr)Expr.create(getContext(), get(i).getNativeObject());
+        return res;
+    }
+
+    /**
+     * Translates the AST vector into an FPExpr[]
+     * */   
+    public FPExpr[] ToFPExprArray()
+    {
+        int n = size();
+        FPExpr[] res = new FPExpr[n];
+        for (int i = 0; i < n; i++)
+            res[i] = (FPExpr)Expr.create(getContext(), get(i).getNativeObject());
+        return res;
+    }
+
+    /**
+     * Translates the AST vector into an FPRMExpr[]
+     * */
+    public FPRMExpr[] ToFPRMExprArray()
+    {
+        int n = size();
+        FPRMExpr[] res = new FPRMExpr[n];
+        for (int i = 0; i < n; i++)
+            res[i] = (FPRMExpr)Expr.create(getContext(), get(i).getNativeObject());
+        return res;
+    }
+
+    /**
+     * Translates the AST vector into an IntExpr[]
+     * */ 
+    public IntExpr[] ToIntExprArray()
+    {
+        int n = size();
+        IntExpr[] res = new IntExpr[n];
+        for (int i = 0; i < n; i++)
+            res[i] = (IntExpr)Expr.create(getContext(), get(i).getNativeObject());
+        return res;
+    }
+
+    /**
+     * Translates the AST vector into an RealExpr[]
+     * */   
+    public RealExpr[] ToRealExprArray()
+    {
+        int n = size();
+        RealExpr[] res = new RealExpr[n];
+        for (int i = 0; i < n; i++)
+            res[i] = (RealExpr)Expr.create(getContext(), get(i).getNativeObject());
+        return res;
     }
 }

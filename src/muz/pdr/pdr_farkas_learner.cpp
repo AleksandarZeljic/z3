@@ -34,8 +34,6 @@ Revision History:
 #include "proof_utils.h"
 #include "reg_decl_plugins.h"
 
-#define PROOF_MODE PGM_FINE
-//#define PROOF_MODE PGM_COARSE
 
 namespace pdr {
 
@@ -203,7 +201,7 @@ namespace pdr {
                 lits.push_back(extract_consequence(lo, hi));
                 lo = hi;
             }
-            res = qe::mk_or(lits);
+            res = mk_or(lits);
             IF_VERBOSE(2, { if (lits.size() > 1) { verbose_stream() << "combined lemma: " << mk_pp(res, m) << "\n"; } });
 #endif
         }
@@ -374,7 +372,7 @@ namespace pdr {
     
     farkas_learner::farkas_learner(smt_params& params, ast_manager& outer_mgr) 
         : m_proof_params(get_proof_params(params)), 
-          m_pr(PROOF_MODE),
+          m_pr(PGM_FINE),
           m_constr(0),
           m_combine_farkas_coefficients(true),
           p2o(m_pr, outer_mgr),
@@ -417,6 +415,7 @@ namespace pdr {
                 return false;
             }
         }
+
     };
 
     class collect_pure_proc {
@@ -451,7 +450,7 @@ namespace pdr {
 
         expr_set bs;
         expr_ref_vector blist(m_pr);
-        qe::flatten_and(B, blist);
+        flatten_and(B, blist);
         for (unsigned i = 0; i < blist.size(); ++i) {
             bs.insert(blist[i].get());
         }
@@ -924,6 +923,7 @@ namespace pdr {
             if (p->get_decl_kind() == PR_ASSERTED &&
                 bs.contains(m.get_fact(p))) {
                 expr* fact = m.get_fact(p);
+                (void)p0;
                 TRACE("farkas_learner", 
                       tout << mk_ll_pp(p0,m) << "\n";
                       tout << "Add: " << mk_pp(p,m) << "\n";);

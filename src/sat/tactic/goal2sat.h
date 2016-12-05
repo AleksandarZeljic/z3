@@ -26,8 +26,8 @@ Author:
 Notes:
 
 --*/
-#ifndef _GOAL2SAT_H_
-#define _GOAL2SAT_H_
+#ifndef GOAL2SAT_H_
+#define GOAL2SAT_H_
 
 #include"goal.h"
 #include"sat_solver.h"
@@ -38,8 +38,13 @@ class goal2sat {
     struct imp;
     imp *  m_imp;
     struct scoped_set_imp;
+    expr_ref_vector* m_interpreted_atoms;
+
 public:
     goal2sat();
+    ~goal2sat() { dealloc(m_interpreted_atoms); }
+
+    typedef obj_map<expr, sat::literal> dep2asm_map;
 
     static void collect_param_descrs(param_descrs & r);
 
@@ -51,13 +56,14 @@ public:
        
        \remark m doesn't need to be empty. the definitions there are 
        reused.
-    
+       
        \warning conversion throws a tactic_exception, if it is interrupted (by set_cancel),
        an unsupported operator is found, or memory consumption limit is reached (set with param :max-memory).
     */
-    void operator()(goal const & g, params_ref const & p, sat::solver & t, atom2bool_var & m);
+    void operator()(goal const & g, params_ref const & p, sat::solver & t, atom2bool_var & m, dep2asm_map& dep2asm, bool default_external = false);
 
-    void set_cancel(bool f);
+    void get_interpreted_atoms(expr_ref_vector& atoms);
+
 };
 
 
@@ -80,7 +86,6 @@ public:
     */
     void operator()(sat::solver const & t, atom2bool_var const & m, params_ref const & p, goal & s, model_converter_ref & mc);
     
-    void set_cancel(bool f);
 };
 
 #endif

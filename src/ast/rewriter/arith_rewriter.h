@@ -16,8 +16,8 @@ Author:
 Notes:
 
 --*/
-#ifndef _ARITH_REWRITER_H_
-#define _ARITH_REWRITER_H_
+#ifndef ARITH_REWRITER_H_
+#define ARITH_REWRITER_H_
 
 #include"poly_rewriter.h"
 #include"arith_decl_plugin.h"
@@ -166,8 +166,6 @@ public:
             result = m().mk_app(get_fid(), OP_TO_REAL, 1, &arg); 
     }
     br_status mk_is_int(expr * arg, expr_ref & result);
-
-    void set_cancel(bool f);
 
     br_status mk_sin_core(expr * arg, expr_ref & result);
     br_status mk_cos_core(expr * arg, expr_ref & result);

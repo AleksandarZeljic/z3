@@ -19,6 +19,7 @@ ocamlz3
 # Emacs temp files
 \#*\#
 # Directories with generated code and documentation
+release/*
 build/*
 build-dist/*
 dist/*
@@ -58,8 +59,8 @@ src/api/dotnet/Enumerations.cs
 src/api/dotnet/Native.cs
 src/api/dotnet/Properties/AssemblyInfo.cs
 src/api/dotnet/Microsoft.Z3.xml
-src/api/python/z3consts.py
-src/api/python/z3core.py
+src/api/python/z3/z3consts.py
+src/api/python/z3/z3core.py
 src/ast/pattern/database.h
 src/util/version.h
 src/api/java/Native.cpp
@@ -74,3 +75,14 @@ src/api/ml/z3.mllib
 *.bak
 doc/api
 doc/code
+
+# CMake files copied over by the ``contrib/cmake/boostrap.py`` script
+# See #461
+examples/CMakeLists.txt
+examples/*/CMakeLists.txt
+src/CMakeLists.txt
+src/*/CMakeLists.txt
+src/*/*/CMakeLists.txt
+src/*/*/*/CMakeLists.txt
+src/api/dotnet/cmake_install_gac.cmake.in
+src/api/dotnet/cmake_uninstall_gac.cmake.in

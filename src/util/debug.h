@@ -16,8 +16,10 @@ Author:
 Revision History:
 
 --*/
-#ifndef _DEBUG_H_
-#define _DEBUG_H_
+#ifndef DEBUG_H_
+#define DEBUG_H_
+
+#include <stdlib.h>
 
 void enable_assertions(bool f);
 bool assertions_enabled();
@@ -42,11 +44,15 @@ bool assertions_enabled();
 #define DEBUG_CODE(CODE) ((void) 0)
 #endif
 
+#ifdef NO_Z3_DEBUGGER
+#define INVOKE_DEBUGGER() exit(ERR_INTERNAL_FATAL)
+#else
 #ifdef _WINDOWS
 #define INVOKE_DEBUGGER() __debugbreak()
 #else
 void invoke_gdb();
 #define INVOKE_DEBUGGER() invoke_gdb()
+#endif
 #endif
 
 void notify_assertion_violation(const char * file_name, int line, const char * condition);
@@ -82,6 +88,12 @@ bool is_debug_enabled(const char * tag);
 #define VERIFY(_x_) (void)(_x_)
 #endif
 
+#define ENSURE(_x_)                                         \
+    if (!(_x_)) {                                           \
+        std::cerr << "Failed to verify: " << #_x_ << "\n";  \
+        exit(-1);                                           \
+    }
+
 #define MAKE_NAME2(LINE) zofty_ ## LINE 
 #define MAKE_NAME(LINE) MAKE_NAME2(LINE)
 #define DBG_UNIQUE_NAME MAKE_NAME(__LINE__)
@@ -96,5 +108,5 @@ void finalize_debug();
   ADD_FINALIZER('finalize_debug();')
 */
 
-#endif /* _DEBUG_H_ */
+#endif /* DEBUG_H_ */
 

@@ -22,8 +22,7 @@ import com.microsoft.z3.enumerations.Z3_param_kind;
 /**
  * A ParamDescrs describes a set of parameters.
  **/
-public class ParamDescrs extends Z3Object
-{
+public class ParamDescrs extends Z3Object {
     /**
      * validate a set of parameters.
      **/
@@ -43,6 +42,15 @@ public class ParamDescrs extends Z3Object
         return Z3_param_kind.fromInt(Native.paramDescrsGetKind(
                 getContext().nCtx(), getNativeObject(), name.getNativeObject()));
     }
+
+    /**
+     * Retrieve documentation of parameter.
+     **/
+
+     public String getDocumentation(Symbol name)
+     {
+	 return Native.paramDescrsGetDocumentation(getContext().nCtx(), getNativeObject(), name.getNativeObject());
+     }
 
     /**
      * Retrieve all names of parameters.
@@ -72,15 +80,9 @@ public class ParamDescrs extends Z3Object
     /**
      * Retrieves a string representation of the ParamDescrs.
      **/
-    public String toString()
-    {
-        try
-        {
-            return Native.paramDescrsToString(getContext().nCtx(), getNativeObject());
-        } catch (Z3Exception e)
-        {
-            return "Z3Exception: " + e.getMessage();
-        }
+    @Override
+    public String toString() {
+        return Native.paramDescrsToString(getContext().nCtx(), getNativeObject());
     }
 
     ParamDescrs(Context ctx, long obj)
@@ -88,15 +90,13 @@ public class ParamDescrs extends Z3Object
         super(ctx, obj);
     }
 
-    void incRef(long o)
-    {
-        getContext().getParamDescrsDRQ().incAndClear(getContext(), o);
-        super.incRef(o);
+    @Override
+    void incRef() {
+        Native.paramDescrsIncRef(getContext().nCtx(), getNativeObject());
     }
 
-    void decRef(long o)
-    {
-        getContext().getParamDescrsDRQ().add(o);
-        super.decRef(o);
+    @Override
+    void addToReferenceQueue() {
+        getContext().getParamDescrsDRQ().storeReference(getContext(), this);
     }
 }

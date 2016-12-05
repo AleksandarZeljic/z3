@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef __SUBPAVING_HWF_H_
-#define __SUBPAVING_HWF_H_
+#ifndef SUBPAVING_HWF_H_
+#define SUBPAVING_HWF_H_
 
 #include"subpaving_t.h"
 #include"f2n.h"
@@ -40,7 +40,7 @@ public:
 
 class context_hwf : public context_t<config_hwf> {
 public:
-    context_hwf(f2n<hwf_manager> & m, params_ref const & p, small_object_allocator * a):context_t<config_hwf>(config_hwf(m), p, a) {}
+ context_hwf(reslimit& lim, f2n<hwf_manager> & m, params_ref const & p, small_object_allocator * a):context_t<config_hwf>(lim, config_hwf(m), p, a) {}
 };
 
 };

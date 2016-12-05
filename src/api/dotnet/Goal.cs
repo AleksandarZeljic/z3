@@ -82,7 +82,7 @@ namespace Microsoft.Z3
             Contract.Requires(constraints != null);
             Contract.Requires(Contract.ForAll(constraints, c => c != null));
 
-            Context.CheckContextMatch(constraints);
+            Context.CheckContextMatch<BoolExpr>(constraints);
             foreach (BoolExpr c in constraints)
             {
                 Contract.Assert(c != null); // It was an assume, now made an assert just to be sure we do not regress
@@ -206,6 +206,21 @@ namespace Microsoft.Z3
         public override string ToString()
         {
             return Native.Z3_goal_to_string(Context.nCtx, NativeObject);
+        }
+
+        /// <summary>
+        /// Goal to BoolExpr conversion.
+        /// </summary>
+        /// <returns>A string representation of the Goal.</returns>
+        public BoolExpr AsBoolExpr() {
+            uint n = Size;
+            if (n == 0) 
+                return Context.MkTrue();
+            else if (n == 1)                
+                return Formulas[0];
+            else {
+                return Context.MkAnd(Formulas);
+            }
         }
 
         #region Internal

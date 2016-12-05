@@ -16,8 +16,8 @@ Author:
 Revision History:
 
 --*/
-#ifndef _GROBNER_H_
-#define _GROBNER_H_
+#ifndef GROBNER_H_
+#define GROBNER_H_
 
 #include"ast.h"
 #include"arith_decl_plugin.h"
@@ -110,6 +110,7 @@ protected:
     };
     svector<scope>          m_scopes;
     ptr_vector<monomial>    m_tmp_monomials;
+    ptr_vector<monomial>    m_del_monomials;
     ptr_vector<expr>        m_tmp_vars1;
     ptr_vector<expr>        m_tmp_vars2;
     unsigned                m_num_new_equations; // temporary variable
@@ -125,6 +126,8 @@ protected:
     void display_equations(std::ostream & out, equation_set const & v, char const * header) const;
 
     void del_equations(unsigned old_size);
+
+    void del_monomials(ptr_vector<monomial>& monomials);
 
     void unfreeze_equations(unsigned old_size);
 
@@ -172,7 +175,7 @@ protected:
 
     equation * pick_next();
 
-    void simplify_processed(equation * eq);
+    bool simplify_processed(equation * eq);
 
     void simplify_to_process(equation * eq);
 
@@ -249,6 +252,15 @@ public:
     bool compute_basis(unsigned threshold);
 
     /**
+       \brief Compute one step Grobner basis.
+       Return true if there is no new equation to take.
+    */
+    void compute_basis_init();
+    bool compute_basis_step();
+    unsigned get_num_new_equations() { return m_num_new_equations; }
+
+
+    /**
        \brief Return true if an inconsistency was detected.
     */
     bool inconsistent() const { return m_unsat != 0; }
@@ -277,5 +289,5 @@ public:
     void display(std::ostream & out) const;
 };
 
-#endif /* _GROBNER_H_ */
+#endif /* GROBNER_H_ */
 

@@ -16,9 +16,10 @@ Author:
 Revision History:
 
 --*/
-#ifndef _DL_UTIL_H_
-#define _DL_UTIL_H_
+#ifndef DL_UTIL_H_
+#define DL_UTIL_H_
 
+#include<vector>
 #include"ast.h"
 #include"hashtable.h"
 #include"obj_hashtable.h"
@@ -29,7 +30,6 @@ Revision History:
 #include"ast_counter.h"
 #include"statistics.h"
 #include"lbool.h"
-#include"qe_util.h"
 
 namespace datalog {
 
@@ -41,12 +41,13 @@ namespace datalog {
     class pentagon_relation;
     class relation_fact;
     class relation_signature;
+    class rule_manager;
 
     class verbose_action {
         unsigned  m_lvl;
         class stopwatch* m_sw;
     public:
-        verbose_action(char const* msg, unsigned lvl = 1);
+        verbose_action(char const* msg, unsigned lvl = 11);
         ~verbose_action();
     };
 
@@ -67,7 +68,7 @@ namespace datalog {
     typedef idx_set var_idx_set;
     typedef u_map<var *> varidx2var_map;
     typedef obj_hashtable<func_decl> func_decl_set; //!< Rule dependencies.
-    typedef vector<std::string> string_vector;
+    typedef std::vector<std::string> string_vector;
     
     bool contains_var(expr * trm, unsigned var_idx);
 
@@ -345,17 +346,19 @@ namespace datalog {
 
     class rule_counter : public var_counter {        
     public:
-        rule_counter(bool stay_non_negative = true): var_counter(stay_non_negative) {}
-        void count_rule_vars(ast_manager & m, const rule * r, int coef = 1);
+        rule_counter(){}
+        void count_rule_vars(const rule * r, int coef = 1);
         unsigned get_max_rule_var(const rule& r);
     };
 
     void del_rule(horn_subsume_model_converter* mc, rule& r);
 
-    void resolve_rule(replace_proof_converter* pc, rule const& r1, rule const& r2, unsigned idx, 
+    void resolve_rule(rule_manager& rm,
+                      replace_proof_converter* pc, rule const& r1, rule const& r2, unsigned idx, 
                       expr_ref_vector const& s1, expr_ref_vector const& s2, rule const& res);
 
-    void resolve_rule(rule const& r1, rule const& r2, unsigned idx, 
+    void resolve_rule(rule_manager& rm, 
+                      rule const& r1, rule const& r2, unsigned idx, 
                       expr_ref_vector const& s1, expr_ref_vector const& s2, rule& res);
 
     model_converter* mk_skip_model_converter();
@@ -588,7 +591,7 @@ namespace datalog {
 
 
     /**
-       \brief Remove the first occurence of \c el from \c v and return \c true. If
+       \brief Remove the first occurrence of \c el from \c v and return \c true. If
        \c el is not present in \c v, return \c false. The order of elements in \c v
        is not preserved.
      */
@@ -730,5 +733,5 @@ namespace datalog {
     bool read_uint64(const char * & s, uint64 & res);
 };
 
-#endif /* _DL_UTIL_H_ */
+#endif /* DL_UTIL_H_ */
 

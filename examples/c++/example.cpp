@@ -1,3 +1,9 @@
+
+/*++
+Copyright (c) 2015 Microsoft Corporation
+
+--*/
+
 #include<vector>
 #include"z3++.h"
 
@@ -17,7 +23,7 @@ void demorgan() {
 
     expr x = c.bool_const("x");
     expr y = c.bool_const("y");
-    expr conjecture = !(x && y) == (!x || !y);
+    expr conjecture = (!(x && y)) == (!x || !y);
     
     solver s(c);
     // adding the negation of the conjecture as a constraint.
@@ -205,6 +211,9 @@ void bitvector_example1() {
 
     // using unsigned <=
     prove(ule(x - 10, 0) == ule(x, 10));
+
+    expr y = c.bv_const("y", 32);
+    prove(implies(concat(x, y) == concat(y, x), x == y));
 }
 
 /**
@@ -285,7 +294,7 @@ void error_example() {
 
     // Error using the C API can be detected using Z3_get_error_code.
     // The next call fails because x is a constant.
-    Z3_ast arg = Z3_get_app_arg(c, x, 0);
+    //Z3_ast arg = Z3_get_app_arg(c, x, 0);
     if (Z3_get_error_code(c) != Z3_OK) {
         std::cout << "last call failed.\n";
     }
@@ -977,6 +986,29 @@ void substitute_example() {
     std::cout << new_f << std::endl;
 }
 
+void opt_example() {
+    context c;
+    optimize opt(c);
+    params p(c);
+    p.set("priority",c.str_symbol("pareto"));
+    opt.set(p);
+    expr x = c.int_const("x");
+    expr y = c.int_const("y");
+    opt.add(10 >= x && x >= 0);
+    opt.add(10 >= y && y >= 0);
+    opt.add(x + y <= 11);
+    optimize::handle h1 = opt.maximize(x);
+    optimize::handle h2 = opt.maximize(y);
+    while (true) {
+        if (sat == opt.check()) {
+            std::cout << x << ": " << opt.lower(h1) << " " << y << ": " << opt.lower(h2) << "\n";
+        }
+        else {
+            break;
+        }
+    }
+}
+
 void extract_example() {
     std::cout << "extract example\n";
     context c;
@@ -984,6 +1016,128 @@ void extract_example() {
     x = c.constant("x", c.bv_sort(32));
     expr y = x.extract(21, 10);
     std::cout << y << " " << y.hi() << " " << y.lo() << "\n";
+}
+
+void sudoku_example() {
+    std::cout << "sudoku example\n";
+
+    context c;
+
+    // 9x9 matrix of integer variables 
+    expr_vector x(c);
+    for (unsigned i = 0; i < 9; ++i)
+        for (unsigned j = 0; j < 9; ++j) {
+            std::stringstream x_name;
+
+            x_name << "x_" << i << '_' << j;
+            x.push_back(c.int_const(x_name.str().c_str()));
+        }
+
+    solver s(c);
+
+    // each cell contains a value in {1, ..., 9}
+    for (unsigned i = 0; i < 9; ++i)
+        for (unsigned j = 0; j < 9; ++j) {
+            s.add(x[i * 9 + j] >= 1 && x[i * 9 + j] <= 9);
+        }
+
+    // each row contains a digit at most once
+    for (unsigned i = 0; i < 9; ++i) {
+        expr_vector t(c);
+        for (unsigned j = 0; j < 9; ++j)
+            t.push_back(x[i * 9 + j]);
+        s.add(distinct(t));
+    }
+
+    // each column contains a digit at most once
+    for (unsigned j = 0; j < 9; ++j) {
+        expr_vector t(c);
+        for (unsigned i = 0; i < 9; ++i)
+            t.push_back(x[i * 9 + j]);
+        s.add(distinct(t));
+    }
+
+    // each 3x3 square contains a digit at most once
+    for (unsigned i0 = 0; i0 < 3; i0++) {
+        for (unsigned j0 = 0; j0 < 3; j0++) {
+            expr_vector t(c);
+            for (unsigned i = 0; i < 3; i++)
+                for (unsigned j = 0; j < 3; j++)
+                    t.push_back(x[(i0 * 3 + i) * 9 + j0 * 3 + j]);
+            s.add(distinct(t));
+        }
+    }
+
+    // sudoku instance, we use '0' for empty cells
+    int instance[9][9] = {{0,0,0,0,9,4,0,3,0},
+                          {0,0,0,5,1,0,0,0,7},
+                          {0,8,9,0,0,0,0,4,0},
+                          {0,0,0,0,0,0,2,0,8},
+                          {0,6,0,2,0,1,0,5,0},
+                          {1,0,2,0,0,0,0,0,0},
+                          {0,7,0,0,0,0,5,2,0},
+                          {9,0,0,0,6,5,0,0,0},
+                          {0,4,0,9,7,0,0,0,0}};
+
+    for (unsigned i = 0; i < 9; i++)
+        for (unsigned j = 0; j < 9; j++)
+            if (instance[i][j] != 0)
+                s.add(x[i * 9 + j] == instance[i][j]);
+
+    std::cout << s.check() << std::endl;
+    std::cout << s << std::endl;
+
+    model m = s.get_model();
+    for (unsigned i = 0; i < 9; ++i) {
+        for (unsigned j = 0; j < 9; ++j)
+            std::cout << m.eval(x[i * 9 + j]);
+        std::cout << '\n';
+    }
+}
+
+void param_descrs_example() {
+    std::cout << "parameter description example\n";
+    context c;
+    param_descrs p = param_descrs::simplify_param_descrs(c);
+    std::cout << p << "\n";
+    unsigned sz = p.size();
+    for (unsigned i = 0; i < sz; ++i) {
+        symbol nm = p.name(i);
+        char const* kind = "other";
+        Z3_param_kind k = p.kind(nm);
+        if (k == Z3_PK_UINT) kind = "uint";
+        if (k == Z3_PK_BOOL) kind = "bool";
+        std::cout << nm << ": " << p.documentation(nm) << " kind: " << kind << "\n";
+    }
+}
+
+void consequence_example() {
+    std::cout << "consequence example\n";
+    context c;
+    expr A = c.bool_const("a");
+    expr B = c.bool_const("b");
+    expr C = c.bool_const("c");
+    solver s(c);
+    s.add(implies(A, B));
+    s.add(implies(B, C));
+    expr_vector assumptions(c), vars(c), consequences(c);
+    assumptions.push_back(!C);
+    vars.push_back(A);
+    vars.push_back(B);
+    vars.push_back(C);
+    std::cout << s.consequences(assumptions, vars, consequences) << "\n";
+    std::cout << consequences << "\n";
+}
+
+static void parse_example() {
+    std::cout << "parse example\n";
+    context c;
+    sort_vector sorts(c);
+    func_decl_vector decls(c);
+    sort B = c.bool_sort();
+    decls.push_back(c.function("a", 0, 0, B));
+    expr a = c.parse_string("(assert a)", sorts, decls);
+    std::cout << a << "\n";
 }
 
 int main() {
@@ -1025,7 +1179,12 @@ int main() {
         expr_vector_example(); std::cout << "\n";
         exists_expr_vector_example(); std::cout << "\n";
         substitute_example(); std::cout << "\n";
+        opt_example(); std::cout << "\n";
         extract_example(); std::cout << "\n";
+        param_descrs_example(); std::cout << "\n";
+        sudoku_example(); std::cout << "\n";
+        consequence_example(); std::cout << "\n";
+        parse_example(); std::cout << "\n";
         std::cout << "done\n";
     }
     catch (exception & ex) {

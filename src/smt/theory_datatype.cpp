@@ -36,6 +36,11 @@ namespace smt {
         virtual theory_id get_from_theory() const { return null_theory_id; } 
     };
 
+
+    theory* theory_datatype::mk_fresh(context* new_ctx) { 
+        return alloc(theory_datatype, new_ctx->get_manager(), m_params); 
+    }
+
     /**
        \brief Assert the axiom (antecedent => lhs = rhs)
        antecedent may be null_literal
@@ -60,6 +65,13 @@ namespace smt {
             TRACE("datatype", tout << "adding axiom:\n" << mk_pp(lhs->get_owner(), m) << "\n=\n" << mk_pp(rhs, m) << "\n";);
             if (antecedent == null_literal) {
                 ctx.assign_eq(lhs, ctx.get_enode(rhs), eq_justification::mk_axiom());
+            }
+            else if (ctx.get_assignment(antecedent) != l_true) {
+                literal l(mk_eq(lhs->get_owner(), rhs, true));
+                ctx.mark_as_relevant(l);
+                ctx.mark_as_relevant(antecedent);
+                literal lits[2] = {l, ~antecedent};
+                ctx.mk_th_axiom(get_id(), 2, lits);
             }
             else {
                 SASSERT(ctx.get_assignment(antecedent) == l_true);
@@ -143,22 +155,64 @@ namespace smt {
         ctx.set_conflict(ctx.mk_justification(ext_theory_conflict_justification(get_id(), reg, 1, &l, 1, &p)));
     }
 
+    /**
+       \brief Given a field update n := { r with field := v } for constructor C, assert the axioms:
+       (=> (is-C r) (= (acc_j n) (acc_j r))) for acc_j != field
+       (=> (is-C r) (= (field n) v))         for acc_j != field
+       (=> (not (is-C r)) (= n r))
+    */
+    void theory_datatype::assert_update_field_axioms(enode * n) {
+        m_stats.m_assert_update_field++;
+        SASSERT(is_update_field(n));
+        context & ctx = get_context();
+        ast_manager & m  = get_manager();
+        app*        own  = n->get_owner();
+        expr*       arg1 = own->get_arg(0);
+        func_decl * upd  = n->get_decl();
+        func_decl * acc  = to_func_decl(upd->get_parameter(0).get_ast());
+        func_decl * con  = m_util.get_accessor_constructor(acc);
+        func_decl * rec  = m_util.get_constructor_recognizer(con);
+        ptr_vector<func_decl> const * accessors   = m_util.get_constructor_accessors(con);
+        ptr_vector<func_decl>::const_iterator it  = accessors->begin();
+        ptr_vector<func_decl>::const_iterator end = accessors->end();
+        app_ref rec_app(m.mk_app(rec, arg1), m);
+        ctx.internalize(rec_app, false);
+        literal is_con(ctx.get_bool_var(rec_app));
+        for (; it != end; ++it) {
+            enode* arg;
+            func_decl * acc1   = *it;
+            if (acc1 == acc) {
+                arg = n->get_arg(1);
+            }
+            else {
+                app* acc_app = m.mk_app(acc1, arg1);
+                ctx.internalize(acc_app, false);
+                arg = ctx.get_enode(acc_app);
+            }
+            app * acc_own = m.mk_app(acc1, own);
+            assert_eq_axiom(arg, acc_own, is_con); 
+        }
+        // update_field is identity if 'n' is not created by a matching constructor.        
+        assert_eq_axiom(n, arg1, ~is_con);
+    }
+
     theory_var theory_datatype::mk_var(enode * n) {
         theory_var r  = theory::mk_var(n);
-        theory_var r2 = m_find.mk_var();
-        SASSERT(r == r2);
+        VERIFY(r == static_cast<theory_var>(m_find.mk_var()));
         SASSERT(r == static_cast<int>(m_var_data.size()));
         m_var_data.push_back(alloc(var_data));
         var_data * d  = m_var_data[r];
+        context & ctx   = get_context();
+        ctx.attach_th_var(n, this, r);
         if (is_constructor(n)) {
             d->m_constructor = n;
-            get_context().attach_th_var(n, this, r);
             assert_accessor_axioms(n);
+        }
+        else if (is_update_field(n)) {
+            assert_update_field_axioms(n);
         }
         else {
             ast_manager & m = get_manager();
-            context & ctx   = get_context();
-            ctx.attach_th_var(n, this, r);
             sort * s      = m.get_sort(n->get_owner());
             if (m_util.get_datatype_num_constructors(s) == 1) {
                 func_decl * c = m_util.get_datatype_constructors(s)->get(0);
@@ -192,7 +246,7 @@ namespace smt {
             ctx.set_var_theory(bv, get_id());
             ctx.set_enode_flag(bv, true);
         }
-        if (is_constructor(term)) {
+        if (is_constructor(term) || is_update_field(term)) {
             SASSERT(!is_attached_to_var(e));
             // *** We must create a theory variable for each argument that has sort datatype ***
             //
@@ -383,8 +437,8 @@ namespace smt {
             ctx.set_conflict(ctx.mk_justification(ext_theory_conflict_justification(get_id(), r, 0, 0, m_used_eqs.size(), m_used_eqs.c_ptr())));
             TRACE("occurs_check",
                   tout << "occurs_check: true\n";
-                  svector<enode_pair>::const_iterator it  = m_used_eqs.begin();
-                  svector<enode_pair>::const_iterator end = m_used_eqs.end();
+                  enode_pair_vector::const_iterator it  = m_used_eqs.begin();
+                  enode_pair_vector::const_iterator end = m_used_eqs.end();
                   for(; it != end; ++it) {
                       enode_pair const & p = *it;
                       tout << "eq: #" << p.first->get_owner_id() << " #" << p.second->get_owner_id() << "\n";
@@ -467,8 +521,9 @@ namespace smt {
     }
 
     void theory_datatype::display(std::ostream & out) const {
-        out << "Theory datatype:\n";
         unsigned num_vars = get_num_vars();
+        if (num_vars == 0) return;
+        out << "Theory datatype:\n";
         for (unsigned v = 0; v < num_vars; v++) 
             display_var(out, v);
     }
@@ -478,6 +533,7 @@ namespace smt {
         st.update("datatype splits", m_stats.m_splits);
         st.update("datatype constructor ax", m_stats.m_assert_cnstr);
         st.update("datatype accessor ax", m_stats.m_assert_accessor);
+        st.update("datatype update ax", m_stats.m_assert_update_field);
     }
     
     void theory_datatype::display_var(std::ostream & out, theory_var v) const {
@@ -488,6 +544,10 @@ namespace smt {
         else
             out << "(null)";
         out << "\n";
+    }
+
+    bool theory_datatype::include_func_interp(func_decl* f) {
+        return false; // return m_util.is_accessor(f);
     }
 
     void theory_datatype::init_model(model_generator & m) {
@@ -619,7 +679,7 @@ namespace smt {
         CTRACE("datatype", d->m_recognizers.empty(), ctx.display(tout););
         SASSERT(!d->m_recognizers.empty());
         literal_vector lits;
-        svector<enode_pair> eqs;
+        enode_pair_vector eqs;
         ptr_vector<enode>::const_iterator it  = d->m_recognizers.begin();
         ptr_vector<enode>::const_iterator end = d->m_recognizers.end();
         for (unsigned idx = 0; it != end; ++it, ++idx) {

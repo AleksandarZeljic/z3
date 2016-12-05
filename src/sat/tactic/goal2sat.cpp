@@ -35,6 +35,8 @@ Notes:
 #include"for_each_expr.h"
 #include"model_v2_pp.h"
 #include"tactic.h"
+#include"ast_pp.h"
+#include<sstream>
 
 struct goal2sat::imp {
     struct frame {
@@ -52,17 +54,23 @@ struct goal2sat::imp {
     obj_hashtable<expr>         m_interface_vars;
     sat::solver &               m_solver;
     atom2bool_var &             m_map;
+    dep2asm_map &               m_dep2asm;
     sat::bool_var               m_true;
     bool                        m_ite_extra;
     unsigned long long          m_max_memory;
-    volatile bool               m_cancel;
+    expr_ref_vector             m_trail;
+    expr_ref_vector             m_interpreted_atoms;
+    bool                        m_default_external;
     
-    imp(ast_manager & _m, params_ref const & p, sat::solver & s, atom2bool_var & map):
+    imp(ast_manager & _m, params_ref const & p, sat::solver & s, atom2bool_var & map, dep2asm_map& dep2asm, bool default_external):
         m(_m),
         m_solver(s),
-        m_map(map) {
+        m_map(map),
+        m_dep2asm(dep2asm),
+        m_trail(m),
+        m_interpreted_atoms(m),
+        m_default_external(default_external) {
         updt_params(p);
-        m_cancel = false;
         m_true = sat::null_bool_var;
     }
         
@@ -71,8 +79,9 @@ struct goal2sat::imp {
         m_max_memory      = megabytes_to_bytes(p.get_uint("max_memory", UINT_MAX));
     }
 
-    void throw_op_not_handled() {
-        throw tactic_exception("operator not supported, apply simplifier before invoking translator");
+    void throw_op_not_handled(std::string const& s) {
+        std::string s0 = "operator " + s + " not supported, apply simplifier before invoking translator";
+        throw tactic_exception(s0.c_str());
     }
     
     void mk_clause(sat::literal l) {
@@ -96,14 +105,14 @@ struct goal2sat::imp {
     }
 
     sat::bool_var mk_true() {
-        // create fake variable to represent true;
         if (m_true == sat::null_bool_var) {
+            // create fake variable to represent true;
             m_true = m_solver.mk_var();
             mk_clause(sat::literal(m_true, false)); // v is true
         }
         return m_true;
     }
-    
+
     void convert_atom(expr * t, bool root, bool sign) {
         SASSERT(m.is_bool(t));
         sat::literal  l;
@@ -116,11 +125,14 @@ struct goal2sat::imp {
                 l = sat::literal(mk_true(), !sign);
             }
             else {
-                bool ext = !is_uninterp_const(t) || m_interface_vars.contains(t);
+                bool ext = m_default_external || !is_uninterp_const(t) || m_interface_vars.contains(t);
                 sat::bool_var v = m_solver.mk_var(ext);
                 m_map.insert(t, v);
                 l = sat::literal(v, sign);
                 TRACE("goal2sat", tout << "new_var: " << v << "\n" << mk_ismt2_pp(t, m) << "\n";);
+                if (ext && !is_uninterp_const(t)) {
+                    m_interpreted_atoms.push_back(t);
+                }
             }
         }
         else {
@@ -176,9 +188,12 @@ struct goal2sat::imp {
         case OP_AND:
         case OP_XOR:
         case OP_IMPLIES:
-        case OP_DISTINCT:
+        case OP_DISTINCT: {
             TRACE("goal2sat_not_handled", tout << mk_ismt2_pp(t, m) << "\n";);
-            throw_op_not_handled();
+            std::ostringstream strm;
+            strm << mk_ismt2_pp(t, m);
+            throw_op_not_handled(strm.str());
+        }
         default:
             convert_atom(t, root, sign);
             return true;
@@ -314,6 +329,7 @@ struct goal2sat::imp {
     }
     
     void process(expr * n) {
+        //SASSERT(m_result_stack.empty());
         TRACE("goal2sat", tout << "converting: " << mk_ismt2_pp(n, m) << "\n";);
         if (visit(n, true, false)) {
             SASSERT(m_result_stack.empty());
@@ -322,8 +338,8 @@ struct goal2sat::imp {
         while (!m_frame_stack.empty()) {
         loop:
             cooperate("goal2sat");
-            if (m_cancel)
-                throw tactic_exception(TACTIC_CANCELED_MSG);
+            if (m.canceled())
+                throw tactic_exception(m.limit().get_cancel_msg());
             if (memory::get_allocation_size() > m_max_memory)
                 throw tactic_exception(TACTIC_MAX_MEMORY_MSG);
             frame & fr = m_frame_stack.back();
@@ -332,8 +348,7 @@ struct goal2sat::imp {
             bool sign  = fr.m_sign;
             TRACE("goal2sat_bug", tout << "result stack\n";
                   tout << mk_ismt2_pp(t, m) << " root: " << root << " sign: " << sign << "\n";
-                  for (unsigned i = 0; i < m_result_stack.size(); i++) tout << m_result_stack[i] << " ";
-                  tout << "\n";);
+                  tout << m_result_stack << "\n";);
             if (fr.m_idx == 0 && process_cached(t, root, sign)) {
                 m_frame_stack.pop_back();
                 continue;
@@ -352,23 +367,73 @@ struct goal2sat::imp {
             }
             TRACE("goal2sat_bug", tout << "converting\n";
                   tout << mk_ismt2_pp(t, m) << " root: " << root << " sign: " << sign << "\n";
-                  for (unsigned i = 0; i < m_result_stack.size(); i++) tout << m_result_stack[i] << " ";
-                  tout << "\n";);
+                  tout << m_result_stack << "\n";);
             convert(t, root, sign);
             m_frame_stack.pop_back();
         }
+        CTRACE("goal2sat", !m_result_stack.empty(), tout << m_result_stack << "\n";);
         SASSERT(m_result_stack.empty());
     }
 
+    void insert_dep(expr* dep0, expr* dep, bool sign) {
+        SASSERT(sign || dep0 == dep); // !sign || (not dep0) == dep.
+        SASSERT(!sign || m.is_not(dep0));
+        expr_ref new_dep(m), fml(m);
+        if (is_uninterp_const(dep)) {
+            new_dep = dep;
+        }
+        else {
+            new_dep = m.mk_fresh_const("dep", m.mk_bool_sort());
+            m_trail.push_back(new_dep);
+            m_interface_vars.insert(new_dep);
+            fml = m.mk_iff(new_dep, dep);
+            process(fml);            
+        }
+        convert_atom(new_dep, false, false);
+        sat::literal lit = m_result_stack.back();
+        m_dep2asm.insert(dep0, sign?~lit:lit);
+        m_result_stack.pop_back();
+    }
 
     void operator()(goal const & g) {
         m_interface_vars.reset();
         collect_boolean_interface(g, m_interface_vars);
-        
         unsigned size = g.size();
+        expr_ref f(m), d_new(m);
+        ptr_vector<expr> deps;
+        expr_ref_vector  fmls(m);
         for (unsigned idx = 0; idx < size; idx++) {
-            expr * f = g.form(idx);
+            f = g.form(idx);
+            // Add assumptions.
+            if (g.dep(idx)) {
+                deps.reset();
+                fmls.reset();
+                m.linearize(g.dep(idx), deps);
+                fmls.push_back(f);
+                for (unsigned i = 0; i < deps.size(); ++i) {
+                    expr * d = deps[i];
+                    expr * d1 = d;
+                    SASSERT(m.is_bool(d));
+                    bool sign = m.is_not(d, d1);
+
+                    insert_dep(d, d1, sign);
+                    if (d == f) {
+                        goto skip_dep;
+                    }
+                    if (sign) {
+                        d_new = d1;
+                    }
+                    else {
+                        d_new = m.mk_not(d);
+                    }
+                    fmls.push_back(d_new);
+                }                
+                f = m.mk_or(fmls.size(), fmls.c_ptr());
+            }
+            TRACE("sat", tout << mk_pp(f, m) << "\n";);
             process(f);
+        skip_dep:
+            ;
         }
     }
 
@@ -380,7 +445,6 @@ struct goal2sat::imp {
             process(fs[i]);
     }
 
-    void set_cancel(bool f) { m_cancel = f; }
 };
 
 struct unsupported_bool_proc {
@@ -415,7 +479,7 @@ bool goal2sat::has_unsupported_bool(goal const & g) {
     return test<unsupported_bool_proc>(g);
 }
 
-goal2sat::goal2sat():m_imp(0) {
+goal2sat::goal2sat():m_imp(0), m_interpreted_atoms(0) {
 }
 
 void goal2sat::collect_param_descrs(param_descrs & r) {
@@ -426,32 +490,29 @@ void goal2sat::collect_param_descrs(param_descrs & r) {
 struct goal2sat::scoped_set_imp {
     goal2sat * m_owner; 
     scoped_set_imp(goal2sat * o, goal2sat::imp * i):m_owner(o) {
-        #pragma omp critical (goal2sat)
-        {
-            m_owner->m_imp = i;
-        }
+        m_owner->m_imp = i;        
     }
     ~scoped_set_imp() {
-        #pragma omp critical (goal2sat)
-        {
-            m_owner->m_imp = 0;
-        }
+        m_owner->m_imp = 0;        
     }
 };
 
-void goal2sat::operator()(goal const & g, params_ref const & p, sat::solver & t, atom2bool_var & m) {
-    imp proc(g.m(), p, t, m);
+
+void goal2sat::operator()(goal const & g, params_ref const & p, sat::solver & t, atom2bool_var & m, dep2asm_map& dep2asm, bool default_external) {
+    imp proc(g.m(), p, t, m, dep2asm, default_external);
     scoped_set_imp set(this, &proc);
     proc(g);
+    dealloc(m_interpreted_atoms);
+    m_interpreted_atoms = alloc(expr_ref_vector, g.m());
+    m_interpreted_atoms->append(proc.m_interpreted_atoms);
 }
 
-void goal2sat::set_cancel(bool f) {
-    #pragma omp critical (goal2sat)
-    {
-        if (m_imp)
-            m_imp->set_cancel(f);
+void goal2sat::get_interpreted_atoms(expr_ref_vector& atoms) {
+    if (m_interpreted_atoms) {
+        atoms.append(*m_interpreted_atoms);
     }
 }
+
 
 struct sat2goal::imp {
 
@@ -463,7 +524,7 @@ struct sat2goal::imp {
         // This information may be stored as a vector of pairs.
         // The mapping is only created during the model conversion.
         expr_ref_vector             m_var2expr;
-        ref<filter_model_converter> m_fmc; // filter for eliminating fresh variables introduced in the assertion-set --> sat conversion
+        filter_model_converter_ref  m_fmc; // filter for eliminating fresh variables introduced in the assertion-set --> sat conversion
         
         sat_model_converter(ast_manager & m):
             m_var2expr(m) {
@@ -568,9 +629,8 @@ struct sat2goal::imp {
     expr_ref_vector         m_lit2expr;
     unsigned long long      m_max_memory;
     bool                    m_learned;
-    volatile bool           m_cancel;
     
-    imp(ast_manager & _m, params_ref const & p):m(_m), m_lit2expr(m), m_cancel(false) {
+    imp(ast_manager & _m, params_ref const & p):m(_m), m_lit2expr(m) {
         updt_params(p);
     }
 
@@ -580,8 +640,8 @@ struct sat2goal::imp {
     }
 
     void checkpoint() {
-        if (m_cancel)
-            throw tactic_exception(TACTIC_CANCELED_MSG);
+        if (m.canceled())
+            throw tactic_exception(m.limit().get_cancel_msg());
         if (memory::get_allocation_size() > m_max_memory)
             throw tactic_exception(TACTIC_MAX_MEMORY_MSG);
     }
@@ -668,7 +728,6 @@ struct sat2goal::imp {
             assert_clauses(s.begin_learned(), s.end_learned(), r);
     }
 
-    void set_cancel(bool f) { m_cancel = f; }
 };
 
 sat2goal::sat2goal():m_imp(0) {
@@ -682,16 +741,10 @@ void sat2goal::collect_param_descrs(param_descrs & r) {
 struct sat2goal::scoped_set_imp {
     sat2goal * m_owner; 
     scoped_set_imp(sat2goal * o, sat2goal::imp * i):m_owner(o) {
-        #pragma omp critical (sat2goal)
-        {
-            m_owner->m_imp = i;
-        }
+        m_owner->m_imp = i;        
     }
     ~scoped_set_imp() {
-        #pragma omp critical (sat2goal)
-        {
-            m_owner->m_imp = 0;
-        }
+        m_owner->m_imp = 0;        
     }
 };
 
@@ -702,10 +755,3 @@ void sat2goal::operator()(sat::solver const & t, atom2bool_var const & m, params
     proc(t, m, g, mc);
 }
 
-void sat2goal::set_cancel(bool f) {
-    #pragma omp critical (sat2goal)
-    {
-        if (m_imp)
-            m_imp->set_cancel(f);
-    }
-}
