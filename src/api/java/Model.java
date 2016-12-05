@@ -22,8 +22,7 @@ import com.microsoft.z3.enumerations.Z3_sort_kind;
 /**
  * A Model contains interpretations (assignments) of constants and functions.
  **/
-public class Model extends Z3Object
-{
+public class Model extends Z3Object {
     /**
      * Retrieves the interpretation (the assignment) of {@code a} in
      * the model. 
@@ -56,7 +55,7 @@ public class Model extends Z3Object
                         Native.getRange(getContext().nCtx(), f.getNativeObject())) == Z3_sort_kind.Z3_ARRAY_SORT
                         .toInt())
             throw new Z3Exception(
-                    "Non-zero arity functions and arrays have FunctionInterpretations as a model. Use FuncInterp.");
+                    "Non-zero arity functions and arrays have FunctionInterpretations as a model. Use getFuncInterp.");
 
         long n = Native.modelGetConstInterp(getContext().nCtx(), getNativeObject(),
                 f.getNativeObject());
@@ -92,7 +91,7 @@ public class Model extends Z3Object
                     return null;
                 else
                 {
-                    if (Native.isAsArray(getContext().nCtx(), n) ^ true)
+                    if (!Native.isAsArray(getContext().nCtx(), n))
                         throw new Z3Exception(
                                 "Argument was not an array constant");
                     long fd = Native.getAsArrayFuncDecl(getContext().nCtx(), n);
@@ -101,7 +100,7 @@ public class Model extends Z3Object
             } else
             {
                 throw new Z3Exception(
-                        "Constant functions do not have a function interpretation; use ConstInterp");
+                        "Constant functions do not have a function interpretation; use getConstInterp");
             }
         } else
         {
@@ -201,18 +200,19 @@ public class Model extends Z3Object
      * Remarks:  This function may fail if {@code t} contains
      * quantifiers, is partial (MODEL_PARTIAL enabled), or if {@code t} is not well-sorted. In this case a
      * {@code ModelEvaluationFailedException} is thrown.  
-     * @param t An expression {@code completion} When this flag
+	 * @param t the expression to evaluate
+     * @param completion An expression {@code completion} When this flag
      * is enabled, a model value will be assigned to any constant or function
      * that does not have an interpretation in the model.
-     * 
+
      * @return The evaluation of {@code t} in the model.
      * @throws Z3Exception
      **/
     public Expr eval(Expr t, boolean completion)
     {
         Native.LongPtr v = new Native.LongPtr();
-        if (Native.modelEval(getContext().nCtx(), getNativeObject(),
-                t.getNativeObject(), (completion) ? true : false, v) ^ true)
+        if (!Native.modelEval(getContext().nCtx(), getNativeObject(),
+            t.getNativeObject(), (completion), v))
             throw new ModelEvaluationFailedException();
         else
             return Expr.create(getContext(), v.value);
@@ -243,8 +243,8 @@ public class Model extends Z3Object
      * in a formula. The interpretation for a sort is a finite set of distinct
      * values. We say this finite set is the "universe" of the sort. 
      * 
-     * @see getNumSorts
-     * @see getSortUniverse
+     * @see #getNumSorts
+     * @see #getSortUniverse
      * 
      * @throws Z3Exception
      **/
@@ -281,15 +281,9 @@ public class Model extends Z3Object
      * 
      * @return A string representation of the model.
      **/
-    public String toString()
-    {
-        try
-        {
-            return Native.modelToString(getContext().nCtx(), getNativeObject());
-        } catch (Z3Exception e)
-        {
-            return "Z3Exception: " + e.getMessage();
-        }
+    @Override
+    public String toString() {
+        return Native.modelToString(getContext().nCtx(), getNativeObject());
     }
 
     Model(Context ctx, long obj)
@@ -297,15 +291,13 @@ public class Model extends Z3Object
         super(ctx, obj);
     }
 
-    void incRef(long o)
-    {
-        getContext().getModelDRQ().incAndClear(getContext(), o);
-        super.incRef(o);
+    @Override
+    void incRef() {
+        Native.modelIncRef(getContext().nCtx(), getNativeObject());
     }
 
-    void decRef(long o)
-    {
-        getContext().getModelDRQ().add(o);
-        super.decRef(o);
+    @Override
+    void addToReferenceQueue() {
+        getContext().getModelDRQ().storeReference(getContext(), this);
     }
 }

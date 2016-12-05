@@ -30,7 +30,7 @@ extern "C" {
         Z3_TRY;
         LOG_Z3_mk_params(c);
         RESET_ERROR_CODE();
-        Z3_params_ref * p = alloc(Z3_params_ref);
+        Z3_params_ref * p = alloc(Z3_params_ref, *mk_c(c));
         mk_c(c)->save_object(p);
         Z3_params r = of_params(p);
         RETURN_Z3(r);
@@ -176,6 +176,19 @@ extern "C" {
         }
         Z3_symbol result = of_symbol(to_param_descrs_ptr(p)->get_param_name(i));
         return result;
+        Z3_CATCH_RETURN(0);
+    }
+
+    Z3_string Z3_API Z3_param_descrs_get_documentation(Z3_context c, Z3_param_descrs p, Z3_symbol s) {
+        Z3_TRY;
+        LOG_Z3_param_descrs_get_documentation(c, p, s);
+        RESET_ERROR_CODE();
+        char const* result = to_param_descrs_ptr(p)->get_descr(to_symbol(s));
+        if (result == 0) {
+            SET_ERROR_CODE(Z3_IOB);
+            RETURN_Z3(0);
+        }
+        return mk_c(c)->mk_external_string(result);
         Z3_CATCH_RETURN(0);
     }
 

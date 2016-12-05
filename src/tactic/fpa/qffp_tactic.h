@@ -33,11 +33,9 @@ tactic * mk_qffpbv_tactic(ast_manager & m, params_ref const & p = params_ref());
 
 probe * mk_is_qffp_probe();
 probe * mk_is_qffpbv_probe();
-probe * mk_has_fp_to_real_probe();
 /*
   ADD_PROBE("is-qffp", "true if the goal is in QF_FP (floats).", "mk_is_qffp_probe()")
   ADD_PROBE("is-qffpbv", "true if the goal is in QF_FPBV (floats+bit-vectors).", "mk_is_qffpbv_probe()")
-  ADD_PROBE("has-fp-to-real", "true if the goal contains an FP to_real conversion.", "mk_has_fp_to_real_probe()")
 */
 
 #endif

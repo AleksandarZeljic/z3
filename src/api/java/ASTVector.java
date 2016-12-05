@@ -20,8 +20,7 @@ package com.microsoft.z3;
 /**
  * Vectors of ASTs.
  **/
-public class ASTVector extends Z3Object
-{
+public class ASTVector extends Z3Object {
     /**
      * The size of the vector
      **/
@@ -87,15 +86,9 @@ public class ASTVector extends Z3Object
     /**
      * Retrieves a string representation of the vector.
      **/
-    public String toString()
-    {
-        try
-        {
-            return Native.astVectorToString(getContext().nCtx(), getNativeObject());
-        } catch (Z3Exception e)
-        {
-            return "Z3Exception: " + e.getMessage();
-        }
+    @Override
+    public String toString() {
+        return Native.astVectorToString(getContext().nCtx(), getNativeObject());
     }
 
     ASTVector(Context ctx, long obj)
@@ -108,18 +101,16 @@ public class ASTVector extends Z3Object
         super(ctx, Native.mkAstVector(ctx.nCtx()));
     }
 
-    void incRef(long o)
-    {
-        getContext().getASTVectorDRQ().incAndClear(getContext(), o);
-        super.incRef(o);
+    @Override
+    void incRef() {
+        Native.astVectorIncRef(getContext().nCtx(), getNativeObject());
     }
 
-    void decRef(long o)
-    {
-        getContext().getASTVectorDRQ().add(o);
-        super.decRef(o);
+    @Override
+    void addToReferenceQueue() {
+        getContext().getASTVectorDRQ().storeReference(getContext(), this);
     }
-    
+
     /**
      * Translates the AST vector into an AST[]
      * */

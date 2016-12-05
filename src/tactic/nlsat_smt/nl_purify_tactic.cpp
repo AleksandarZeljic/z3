@@ -59,6 +59,7 @@ Revision History:
 #include "model_smt2_pp.h"
 #include "expr_safe_replace.h"
 #include "ast_util.h"
+#include "solver2tactic.h"
 
 class nl_purify_tactic : public tactic {
 
@@ -73,7 +74,6 @@ class nl_purify_tactic : public tactic {
     params_ref      m_params;
     bool            m_produce_proofs;
     ref<filter_model_converter> m_fmc;
-    bool            m_cancel;       
     tactic_ref      m_nl_tac;       // nlsat tactic
     goal_ref        m_nl_g;         // nlsat goal
     ref<solver>     m_solver;       // SMT solver
@@ -155,8 +155,7 @@ public:
 
         void mk_interface_bool(func_decl * f, unsigned num, expr* const* args, expr_ref& result, proof_ref& pr) {
             expr_ref old_pred(m.mk_app(f, num, args), m);
-            polarity_t pol;
-            VERIFY(m_polarities.find(old_pred, pol));
+            polarity_t pol = m_polarities.find(old_pred);
             result = m.mk_fresh_const(0, m.mk_bool_sort());
             m_polarities.insert(result, pol);
             m_new_preds.push_back(to_app(result));
@@ -289,8 +288,8 @@ private:
     arith_util & u() { return m_util; }
 
     void check_point() {
-        if (m_cancel) {
-            throw tactic_exception("canceled");
+        if (m.canceled()) {
+            throw tactic_exception(Z3_CANCELED_MSG);
         }
     }
 
@@ -701,7 +700,6 @@ public:
         m_util(m),
         m_params(p),
         m_fmc(0),
-        m_cancel(false),
         m_nl_tac(mk_nlsat_tactic(m, p)),
         m_nl_g(0),
         m_solver(mk_smt_solver(m, p, symbol::null)),
@@ -719,17 +717,6 @@ public:
 
     virtual tactic * translate(ast_manager& m) {
         return alloc(nl_purify_tactic, m, m_params);
-    }
-
-    virtual void set_cancel(bool f) {
-        m_nl_tac->set_cancel(f);
-        if (f) {
-            m_solver->cancel();
-        }
-        else {
-            m_solver->reset_cancel();
-        }
-        m_cancel = f;
     }
 
     virtual void collect_statistics(statistics & st) const {

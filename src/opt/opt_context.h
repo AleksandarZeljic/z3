@@ -28,7 +28,7 @@ Notes:
 #include "arith_decl_plugin.h"
 #include "bv_decl_plugin.h"
 #include "cmd_context.h"
-
+#include "qsat.h"
 
 namespace opt {
 
@@ -48,12 +48,15 @@ namespace opt {
         virtual filter_model_converter& fm() = 0;   // converter that removes fresh names introduced by simplification.
         virtual bool sat_enabled() const = 0;       // is using th SAT solver core enabled?
         virtual solver& get_solver() = 0;           // retrieve solver object (SAT or SMT solver)
-        virtual ast_manager& get_manager() = 0;      
+        virtual ast_manager& get_manager() const = 0;      
         virtual params_ref& params() = 0;
         virtual void enable_sls(bool force) = 0;              // stochastic local search 
         virtual symbol const& maxsat_engine() const = 0; // retrieve maxsat engine configuration parameter.
         virtual void get_base_model(model_ref& _m) = 0;  // retrieve model from initial satisfiability call.
         virtual smt::context& smt_context() = 0;    // access SMT context for SMT based MaxSMT solver (wmax requires SMT core)
+        virtual unsigned num_objectives() = 0;
+        virtual bool verify_model(unsigned id, model* mdl, rational const& v) = 0;
+        virtual void set_model(model_ref& _m) = 0;
     };
 
     /**
@@ -131,6 +134,7 @@ namespace opt {
             bool set(ptr_vector<expr> & hard);
             unsigned add(expr* soft, rational const& weight, symbol const& id);
             unsigned add(app* obj, bool is_max);
+            unsigned get_index(symbol const& id) { return m_indices[id]; }
         };
 
         ast_manager&        m;
@@ -141,6 +145,7 @@ namespace opt {
         ref<solver>         m_solver;
         ref<solver>         m_sat_solver;
         scoped_ptr<pareto_base>          m_pareto;
+        scoped_ptr<qe::qmax> m_qmax;
         sref_vector<model>  m_box_models;
         unsigned            m_box_index;
         params_ref          m_params;
@@ -161,6 +166,8 @@ namespace opt {
         bool                         m_pp_neat;
         symbol                       m_maxsat_engine;
         symbol                       m_logic;
+        svector<symbol>              m_labels;
+        std::string                  m_unknown;
     public:
         context(ast_manager& m);
         virtual ~context();
@@ -168,24 +175,24 @@ namespace opt {
         unsigned add_objective(app* t, bool is_max);
         void add_hard_constraint(expr* f);
         
+        void get_hard_constraints(expr_ref_vector& hard);
+        expr_ref get_objective(unsigned i);
 
         virtual void push();
         virtual void pop(unsigned n);
         virtual bool empty() { return m_scoped_state.m_objectives.empty(); }
-        virtual void set_cancel(bool f);
-        virtual void reset_cancel() { set_cancel(false); }
-        virtual void cancel() { set_cancel(true); }
         virtual void set_hard_constraints(ptr_vector<expr> & hard);
         virtual lbool optimize();
         virtual bool print_model() const;
+        virtual void set_model(model_ref& _m) { m_model = _m; }
         virtual void get_model(model_ref& _m);
-        virtual void set_model(model_ref& _m);
         virtual void fix_model(model_ref& _m);
         virtual void collect_statistics(statistics& stats) const;
         virtual proof* get_proof() { return 0; }
-        virtual void get_labels(svector<symbol> & r) {}
+        virtual void get_labels(svector<symbol> & r);
         virtual void get_unsat_core(ptr_vector<expr> & r) {}
         virtual std::string reason_unknown() const;
+        virtual void set_reason_unknown(char const* msg) { m_unknown = msg; }
 
         virtual void display_assignment(std::ostream& out);
         virtual bool is_pareto() { return m_pareto.get() != 0; }
@@ -194,7 +201,7 @@ namespace opt {
 
         void display(std::ostream& out);
         static void collect_param_descrs(param_descrs & r);
-        void updt_params(params_ref& p);
+        virtual void updt_params(params_ref const& p);
         params_ref& get_params() { return m_params; }
 
         expr_ref get_lower(unsigned idx);
@@ -203,7 +210,7 @@ namespace opt {
         std::string to_string() const;
 
 
-        virtual unsigned num_objectives() { return m_objectives.size(); }
+        virtual unsigned num_objectives() { return m_scoped_state.m_objectives.size(); }       
         virtual expr_ref mk_gt(unsigned i, model_ref& model);
         virtual expr_ref mk_ge(unsigned i, model_ref& model);
         virtual expr_ref mk_le(unsigned i, model_ref& model);
@@ -212,33 +219,35 @@ namespace opt {
         virtual filter_model_converter& fm() { return m_fm; }
         virtual bool sat_enabled() const { return 0 != m_sat_solver.get(); }
         virtual solver& get_solver();
-        virtual ast_manager& get_manager() { return this->m; }
+        virtual ast_manager& get_manager() const { return this->m; }
         virtual params_ref& params() { return m_params; }
         virtual void enable_sls(bool force);
         virtual symbol const& maxsat_engine() const { return m_maxsat_engine; }
         virtual void get_base_model(model_ref& _m);
 
 
-    private:
-        void validate_feasibility(maxsmt& ms);
+        virtual bool verify_model(unsigned id, model* mdl, rational const& v);
 
+    private:
         lbool execute(objective const& obj, bool committed, bool scoped);
         lbool execute_min_max(unsigned index, bool committed, bool scoped, bool is_max);
         lbool execute_maxsat(symbol const& s, bool committed, bool scoped);
         lbool execute_lex();
         lbool execute_box();
         lbool execute_pareto();
+        lbool adjust_unknown(lbool r);
+        bool scoped_lex();
         expr_ref to_expr(inf_eps const& n);
 
         void reset_maxsmts();
         void import_scoped_state();
         void normalize();
         void internalize();
-        bool is_maximize(expr* fml, app_ref& term, expr*& orig_term, unsigned& index);
-        bool is_minimize(expr* fml, app_ref& term, expr*& orig_term, unsigned& index);
+        bool is_maximize(expr* fml, app_ref& term, expr_ref& orig_term, unsigned& index);
+        bool is_minimize(expr* fml, app_ref& term, expr_ref& orig_term, unsigned& index);
         bool is_maxsat(expr* fml, expr_ref_vector& terms, 
                        vector<rational>& weights, rational& offset, bool& neg, 
-                       symbol& id, unsigned& index);
+                       symbol& id, expr_ref& orig_term, unsigned& index);
         void  purify(app_ref& term);
         app* purify(filter_model_converter_ref& fm, expr* e);
         bool is_mul_const(expr* e);
@@ -267,7 +276,7 @@ namespace opt {
         void    init_solver();
         void    update_solver();
         void    setup_arith_solver();
-        void    add_maxsmt(symbol const& id);
+        void    add_maxsmt(symbol const& id, unsigned index);
         void    set_simplify(tactic *simplify);
         void    set_pareto(pareto_base* p);        
         void    clear_state();
@@ -277,17 +286,23 @@ namespace opt {
         void display_objective(std::ostream& out, objective const& obj) const;
         void display_bounds(std::ostream& out, bounds_t const& b) const;
 
+        std::string to_string(expr_ref_vector const& hard, vector<objective> const& objectives) const;
+        std::string to_string_internal() const;
+
 
         void validate_lex();
 
         void display_benchmark();
-
 
         // pareto
         void yield();
         expr_ref mk_ge(expr* t, expr* s);
         expr_ref mk_cmp(bool is_ge, model_ref& mdl, objective const& obj);
 
+
+        // quantifiers
+        bool is_qsat_opt();
+        lbool run_qsat_opt();
     };
 
 }

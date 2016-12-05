@@ -22,6 +22,7 @@ Notes:
 #define CMD_CONTEXT_H_
 
 #include<sstream>
+#include<vector>
 #include"ast.h"
 #include"ast_printer.h"
 #include"pdecl.h"
@@ -37,6 +38,7 @@ Notes:
 #include"progress_callback.h"
 #include"scoped_ptr_vector.h"
 #include"context_params.h"
+
 
 class func_decls {
     func_decl * m_decls;
@@ -116,15 +118,13 @@ public:
     virtual bool empty() = 0;
     virtual void push() = 0;
     virtual void pop(unsigned n) = 0;
-    virtual void set_cancel(bool f) = 0;
-    virtual void reset_cancel() = 0;
-    virtual void cancel() = 0;
     virtual lbool optimize() = 0;
     virtual void set_hard_constraints(ptr_vector<expr> & hard) = 0;
     virtual void display_assignment(std::ostream& out) = 0;
     virtual bool is_pareto() = 0;
     virtual void set_logic(symbol const& s) = 0;
     virtual bool print_model() const = 0;
+    virtual void updt_params(params_ref const& p) = 0;
 };
 
 class cmd_context : public progress_callback, public tactic_manager, public ast_printer_context {
@@ -155,6 +155,7 @@ protected:
     bool                         m_print_success;
     unsigned                     m_random_seed;
     bool                         m_produce_unsat_cores;
+    bool                         m_produce_unsat_assumptions;
     bool                         m_produce_assignments;
     status                       m_status;
     bool                         m_numeral_as_real;
@@ -166,6 +167,7 @@ protected:
     ast_manager *                m_manager;
     bool                         m_own_manager;
     bool                         m_manager_initialized;
+    bool                         m_rec_fun_declared;
     pdecl_manager *              m_pmanager;
     sexpr_manager *              m_sexpr_manager;
     check_logic                  m_check_logic;
@@ -189,7 +191,7 @@ protected:
     // 
     ptr_vector<pdecl>            m_aux_pdecls;
     ptr_vector<expr>             m_assertions;
-    vector<std::string>          m_assertion_strings;
+    std::vector<std::string>     m_assertion_strings;
     ptr_vector<expr>             m_assertion_names; // named assertions are represented using boolean variables.
 
     struct scope {
@@ -247,22 +249,15 @@ protected:
     void erase_psort_decl_core(symbol const & s);
     void erase_macro_core(symbol const & s);
 
-    bool logic_has_arith_core(symbol const & s) const;
-    bool logic_has_bv_core(symbol const & s) const;
-    bool logic_has_array_core(symbol const & s) const;
-    bool logic_has_seq_core(symbol const & s) const;
-    bool logic_has_fpa_core(symbol const & s) const;
-    bool logic_has_horn(symbol const& s) const;
     bool logic_has_arith() const;
     bool logic_has_bv() const;
     bool logic_has_seq() const;
     bool logic_has_array() const;
     bool logic_has_datatype() const;
     bool logic_has_fpa() const;
-    bool supported_logic(symbol const & s) const;
 
     void print_unsupported_msg() { regular_stream() << "unsupported" << std::endl; }
-    void print_unsupported_info(symbol const& s) { if (s != symbol::null) diagnostic_stream() << "; " << s << std::endl;}
+    void print_unsupported_info(symbol const& s, int line, int pos) { if (s != symbol::null) diagnostic_stream() << "; " << s << " line: " << line << " position: " << pos << std::endl;}
 
     void mk_solver();
 
@@ -270,8 +265,6 @@ public:
     cmd_context(bool main_ctx = true, ast_manager * m = 0, symbol const & l = symbol::null);
     ~cmd_context(); 
     void set_cancel(bool f);
-    void cancel() { set_cancel(true); }
-    void reset_cancel() { set_cancel(false); }
     context_params  & params() { return m_params; }
     solver_factory &get_solver_factory() { return *m_solver_factory; }
     solver_factory &get_interpolating_solver_factory() { return *m_interpolating_solver_factory; }
@@ -292,7 +285,7 @@ public:
     void set_print_success(bool flag) { m_print_success = flag; }
     bool print_success_enabled() const { return m_print_success; }
     void print_success() { if (print_success_enabled())  regular_stream() << "success" << std::endl; }
-    void print_unsupported(symbol const & s) { print_unsupported_msg(); print_unsupported_info(s); }
+    void print_unsupported(symbol const & s, int line, int pos) { print_unsupported_msg(); print_unsupported_info(s, line, pos); }
     bool global_decls() const { return m_global_decls; }
     void set_global_decls(bool flag) { SASSERT(!has_manager()); m_global_decls = flag; }
     unsigned random_seed() const { return m_random_seed; }
@@ -307,7 +300,9 @@ public:
     void set_produce_unsat_cores(bool flag);
     void set_produce_proofs(bool flag);
     void set_produce_interpolants(bool flag);
+    void set_produce_unsat_assumptions(bool flag) { m_produce_unsat_assumptions = flag; }
     bool produce_assignments() const { return m_produce_assignments; }
+    bool produce_unsat_assumptions() const { return m_produce_unsat_assumptions; }
     void set_produce_assignments(bool flag) { m_produce_assignments = flag; }
     void set_status(status st) { m_status = st; }
     status get_status() const { return m_status; }
@@ -341,6 +336,7 @@ public:
     void insert(probe_info * p) { tactic_manager::insert(p); } 
     void insert_user_tactic(symbol const & s, sexpr * d); 
     void insert_aux_pdecl(pdecl * p);
+    void insert_rec_fun(func_decl* f, expr_ref_vector const& binding, svector<symbol> const& ids, expr* e);
     func_decl * find_func_decl(symbol const & s) const;
     func_decl * find_func_decl(symbol const & s, unsigned num_indices, unsigned const * indices, 
                                unsigned arity, sort * const * domain, sort * range) const;
@@ -389,6 +385,8 @@ public:
     void push(unsigned n);
     void pop(unsigned n);
     void check_sat(unsigned num_assumptions, expr * const * assumptions);
+    void get_consequences(expr_ref_vector const& assumptions, expr_ref_vector const& vars, expr_ref_vector & conseq);
+    void reset_assertions();
     // display the result produced by a check-sat or check-sat-using commands in the regular stream
     void display_sat_result(lbool r);
     // check if result produced by check-sat or check-sat-using matches the known status

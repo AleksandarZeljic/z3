@@ -201,7 +201,7 @@ namespace pdr {
                 lits.push_back(extract_consequence(lo, hi));
                 lo = hi;
             }
-            res = qe::mk_or(lits);
+            res = mk_or(lits);
             IF_VERBOSE(2, { if (lits.size() > 1) { verbose_stream() << "combined lemma: " << mk_pp(res, m) << "\n"; } });
 #endif
         }
@@ -415,6 +415,7 @@ namespace pdr {
                 return false;
             }
         }
+
     };
 
     class collect_pure_proc {
@@ -922,6 +923,7 @@ namespace pdr {
             if (p->get_decl_kind() == PR_ASSERTED &&
                 bs.contains(m.get_fact(p))) {
                 expr* fact = m.get_fact(p);
+                (void)p0;
                 TRACE("farkas_learner", 
                       tout << mk_ll_pp(p0,m) << "\n";
                       tout << "Add: " << mk_pp(p,m) << "\n";);

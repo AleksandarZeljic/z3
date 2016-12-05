@@ -73,7 +73,7 @@ namespace pdr {
     }
 
     std::string pp_cube(unsigned sz, app * const * lits, ast_manager& m) {
-        return pp_cube(sz, reinterpret_cast<expr * const *>(lits), m);
+        return pp_cube(sz, (expr * const *)(lits), m);
     }
 
     std::string pp_cube(unsigned sz, expr * const * lits, ast_manager& m) {
@@ -247,7 +247,7 @@ namespace pdr {
         }
 
         bool test_eq(expr* e) const {
-            expr* lhs, *rhs;
+            expr* lhs = 0, *rhs = 0;
             VERIFY(m.is_eq(e, lhs, rhs));
             if (!a.is_int_real(lhs)) {
                 return true;

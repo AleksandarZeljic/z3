@@ -18,9 +18,19 @@ Revision History:
 --*/
 #include"bv_simplifier_params.h"
 #include"bv_simplifier_params_helper.hpp"
+#include"bv_rewriter_params.hpp"
 
 void bv_simplifier_params::updt_params(params_ref const & _p) {
     bv_simplifier_params_helper p(_p);
-    m_hi_div0 = p.bv_hi_div0();
+    bv_rewriter_params rp(_p);
+    m_hi_div0 = rp.hi_div0();
     m_bv2int_distribute = p.bv_bv2int_distribute();
+
+}
+
+#define DISPLAY_PARAM(X) out << #X"=" << X << std::endl;
+
+void bv_simplifier_params::display(std::ostream & out) const {
+    DISPLAY_PARAM(m_hi_div0);
+    DISPLAY_PARAM(m_bv2int_distribute);
 }

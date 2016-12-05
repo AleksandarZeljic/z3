@@ -175,7 +175,7 @@ protected:
 
     equation * pick_next();
 
-    void simplify_processed(equation * eq);
+    bool simplify_processed(equation * eq);
 
     void simplify_to_process(equation * eq);
 
@@ -250,6 +250,15 @@ public:
        Return true if the threshold was not reached.
     */
     bool compute_basis(unsigned threshold);
+
+    /**
+       \brief Compute one step Grobner basis.
+       Return true if there is no new equation to take.
+    */
+    void compute_basis_init();
+    bool compute_basis_step();
+    unsigned get_num_new_equations() { return m_num_new_equations; }
+
 
     /**
        \brief Return true if an inconsistency was detected.

@@ -439,8 +439,8 @@ class fpa2bv_approx_tactic: public tactic {
                 mpf_mngr.rem(est_arg_val[0], est_arg_val[1], est_rhs_value);
                 break;
             case OP_FPA_FMA:
-                mpf_mngr.fused_mul_add(rm, arg_val[1], arg_val[2], arg_val[3], rhs_value);
-                mpf_mngr.fused_mul_add(rm, est_arg_val[1], est_arg_val[2], est_arg_val[3], est_rhs_value);
+                mpf_mngr.fma(rm, arg_val[1], arg_val[2], arg_val[3], rhs_value);
+                mpf_mngr.fma(rm, est_arg_val[1], est_arg_val[2], est_arg_val[3], est_rhs_value);
                 break;
             case OP_FPA_SQRT:
                 mpf_mngr.sqrt(rm, arg_val[1], rhs_value);
@@ -1284,7 +1284,7 @@ class fpa2bv_approx_tactic: public tactic {
 
             TRACE("sat_tactic", model_v2_pp(tout, *md););
             model_converter_ref bb_mc = mk_bit_blaster_model_converter(*m_temp_manager, bv2bool.const2bits());
-            model_converter_ref bv_mc = mk_fpa2bv_model_converter_prec(*m_temp_manager, fpa2bv.const2bv(), fpa2bv.rm_const2bv(), fpa2bv.uf2bvuf(), fpa2bv.uf23bvuf());
+            model_converter_ref bv_mc = mk_fpa2bv_model_converter_prec(*m_temp_manager, fpa2bv);
             bb_mc->operator()(md, 0);
             bv_mc->operator()(md, 0);
 
@@ -1376,7 +1376,8 @@ class fpa2bv_approx_tactic: public tactic {
                 for (unsigned i = 0; i < core_labels.size(); i++)
                     core_labels_t.push_back(translator(core_labels[i]));
 
-                sat::solver sat_solver(m_params, 0);
+                reslimit limit;
+                sat::solver sat_solver(m_params, limit, 0);
                 atom2bool_var atom_map(*m_temp_manager);
                 { tactic_report report_i("fpa2bv_approx_before_bitblaster", *ng); }
                 fpa2bv_converter_prec fpa2bv(*m_temp_manager, m_mode);
@@ -1723,8 +1724,7 @@ class fpa2bv_approx_tactic: public tactic {
 		    build_dependencies(g,dependencies,const2term);
 
 #ifdef Z3DEBUG
-
-		    std::cout << "Dependency map" << std::endl;
+		    std::cout<< "Dependency map" <<std::endl;
 		    for (obj_map<func_decl,func_decl_ref_vector*>::iterator it = dependencies.begin();
                                 it != dependencies.end();
                                 it++){
@@ -1859,8 +1859,10 @@ class fpa2bv_approx_tactic: public tactic {
                     }
                     else {
                         solved = precise_model_reconstruction(m_fpa_model, full_mdl, mg, err_est, constants, const2term_map, top_order, core_labels);
+#ifdef Z3DEBUG
                         std::cout<<"Patching of the model "<<((solved)?"succeeded":"failed")<<std::endl;
                         std::cout.flush();
+#endif
                     }
                     if (!solved)
                         model_guided_approximation_refinement(m_fpa_model, full_mdl, mg, constants, const2prec_map, const2term_map, err_est, next_const2prec_map);
@@ -1933,8 +1935,8 @@ class fpa2bv_approx_tactic: public tactic {
             std::cout << "=============== Terminating " << std::endl;          
             std::cout << "Iteration count: " << iteration_cnt << std::endl;
 
-	        dec_ref_map_key_values(m, const2term_map);
-	        top_order->reset();
+            dec_ref_map_key_values(m, const2term_map);
+            top_order->reset();
         }
     };
 

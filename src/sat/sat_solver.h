@@ -38,6 +38,7 @@ Revision History:
 #include"statistics.h"
 #include"stopwatch.h"
 #include"trace.h"
+#include"rlimit.h"
 
 namespace sat {
 
@@ -70,7 +71,7 @@ namespace sat {
     public:
         struct abort_solver {};
     protected:
-        volatile bool           m_cancel;
+        reslimit&               m_rlimit;
         config                  m_config;
         stats                   m_stats;
         extension *             m_ext;
@@ -145,7 +146,7 @@ namespace sat {
         friend class bceq;
         friend struct mk_stat;
     public:
-        solver(params_ref const & p, extension * ext);
+        solver(params_ref const & p, reslimit& l, extension * ext);
         ~solver();
 
         // -----------------------
@@ -156,7 +157,6 @@ namespace sat {
         void updt_params(params_ref const & p);
         static void collect_param_descrs(param_descrs & d);
 
-        void set_cancel(bool f);
         void collect_statistics(statistics & st) const;
         void reset_statistics();
         void display_status(std::ostream & out) const;
@@ -183,6 +183,9 @@ namespace sat {
     protected:
         void del_clause(clause & c);
         clause * mk_clause_core(unsigned num_lits, literal * lits, bool learned);
+        void mk_clause_core(literal_vector const& lits) { mk_clause_core(lits.size(), lits.c_ptr()); }
+        void mk_clause_core(unsigned num_lits, literal * lits) { mk_clause_core(num_lits, lits, false); }
+        void mk_clause_core(literal l1, literal l2) { literal lits[2] = { l1, l2 }; mk_clause_core(2, lits); }
         void mk_bin_clause(literal l1, literal l2, bool learned);
         bool propagate_bin_clause(literal l1, literal l2);
         clause * mk_ter_clause(literal * lits, bool learned);
@@ -234,12 +237,17 @@ namespace sat {
         lbool status(clause const & c) const;        
         clause_offset get_offset(clause const & c) const { return m_cls_allocator.get_offset(&c); }
         void checkpoint() {
-            if (m_cancel) throw solver_exception(Z3_CANCELED_MSG);
+            if (!m_rlimit.inc()) {
+                m_mc.reset();
+                m_model_is_current = false;
+                throw solver_exception(Z3_CANCELED_MSG);
+            }
             ++m_num_checkpoints;
             if (m_num_checkpoints < 10) return;
             m_num_checkpoints = 0;
             if (memory::get_allocation_size() > m_config.m_max_memory) throw solver_exception(Z3_MAX_MEMORY_MSG);
         }
+        bool canceled() { return !m_rlimit.inc(); }
         typedef std::pair<literal, literal> bin_clause;
     protected:
         watch_list & get_wlist(literal l) { return m_watches[l.index()]; }
@@ -296,6 +304,8 @@ namespace sat {
         bool decide();
         bool_var next_var();
         lbool bounded_search();
+        lbool final_check();
+        lbool propagate_and_backjump_step(bool& done);
         void init_search();
         
         literal_vector m_min_core;
@@ -400,15 +410,20 @@ namespace sat {
         void reinit_clauses(unsigned old_sz);
 
         literal_vector m_user_scope_literals;
-        literal_vector m_user_scope_literal_pool;
         literal_vector m_aux_literals;
         svector<bin_clause> m_user_bin_clauses;
         void gc_lit(clause_vector& clauses, literal lit);
         void gc_bin(bool learned, literal nlit);
+        void gc_var(bool_var v);
+
+        bool_var max_var(clause_vector& clauses, bool_var v);
+        bool_var max_var(bool learned, bool_var v);
+
     public:
         void user_push();
         void user_pop(unsigned num_scopes);
         void pop_to_base_level();
+        reslimit& rlimit() { return m_rlimit; }
         // -----------------------
         //
         // Simplification
@@ -419,6 +434,33 @@ namespace sat {
         void simplify(bool learned = true);
         void asymmetric_branching();
         unsigned scc_bin();
+
+        // -----------------------
+        //
+        // Auxiliary methods.
+        //
+        // -----------------------
+    public:
+        lbool find_mutexes(literal_vector const& lits, vector<literal_vector> & mutexes);
+
+        lbool get_consequences(literal_vector const& assms, bool_var_vector const& vars, vector<literal_vector>& conseq);
+
+    private:
+
+        typedef hashtable<unsigned, u_hash, u_eq> index_set;
+
+        u_map<index_set>       m_antecedents;
+        vector<literal_vector> m_binary_clause_graph;
+
+        void extract_assumptions(literal lit, index_set& s);
+
+        lbool get_consequences(literal_vector const& assms, literal_vector const& lits, vector<literal_vector>& conseq);
+
+        void delete_unfixed(literal_set& unfixed);
+
+        void extract_fixed_consequences(unsigned& start, literal_set const& assumptions, literal_set& unfixed, vector<literal_vector>& conseq);
+
+        void extract_fixed_consequences(literal lit, literal_set const& assumptions, literal_set& unfixed, vector<literal_vector>& conseq);
 
         // -----------------------
         //

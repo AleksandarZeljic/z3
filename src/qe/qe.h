@@ -223,6 +223,8 @@ namespace qe {
 
     qe_solver_plugin* mk_arith_plugin(i_solver_context& ctx, bool produce_models, smt_params& p);
 
+    void extract_vars(quantifier* q, expr_ref& new_body, app_ref_vector& vars);
+
     class def_vector {
         func_decl_ref_vector m_vars;
         expr_ref_vector      m_defs;
@@ -313,8 +315,6 @@ namespace qe {
         bool solve_for_vars(unsigned num_vars, app* const* vars, expr* fml, guarded_defs& defs);
 
 
-        void set_cancel(bool f);
-
     private:
         void instantiate_expr(expr_ref_vector& bound, expr_ref& fml);
         void abstract_expr(unsigned sz, expr* const* bound, expr_ref& fml);
@@ -343,7 +343,6 @@ namespace qe {
             return m_quant_elim.first_elim(num_vars, vars, fml, defs);
         }
 
-        void set_cancel(bool f) {} // TBD: replace simplifier by rewriter
 
     };
 

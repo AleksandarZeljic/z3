@@ -45,7 +45,7 @@ enum fpa_approximation_mode {
 class fpa2bv_converter_prec : public fpa2bv_converter {
     fpa_approximation_mode m_mode;
 
-    void fix_bits(unsigned prec, expr_ref rounded, unsigned sbits, unsigned ebits);//expr_ref& fixed,
+    void fix_bits(unsigned prec, expr_ref rounded, unsigned sbits, unsigned ebits);
     
     void mk_small_op(func_decl * f, unsigned prec, unsigned num, expr * const * args, func_decl_ref & small_op, expr_ref_vector & cast_args);
     void mk_small_op(func_decl * f, unsigned new_ebits, unsigned new_sbits, unsigned num, expr * const * args, func_decl_ref & small_op, expr_ref_vector & cast_args);
@@ -53,6 +53,8 @@ class fpa2bv_converter_prec : public fpa2bv_converter {
     void mk_cast_small_to_big(unsigned sbits, unsigned ebits, expr * arg, expr_ref & result);
     void match_sorts(expr * a, expr * b, expr_ref & n_a, expr_ref & n_b);
     void establish_sort(unsigned num, expr * const * args, unsigned & ebits, unsigned & sbits);
+
+    friend class fpa2bv_model_converter_prec;
 public:
     fpa2bv_converter_prec(ast_manager & m, fpa_approximation_mode mode);    
 

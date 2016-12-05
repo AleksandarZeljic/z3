@@ -60,7 +60,6 @@ namespace smt {
         pb_util          pb;
         unsynch_mpz_manager mgr;
         th_rewriter      m_rewrite;
-        volatile bool    m_cancel;
         vector<clause>   m_clauses;      // clauses to be satisfied        
         expr_ref_vector  m_orig_clauses; // for debugging
         model_ref        m_orig_model;   // for debugging
@@ -86,7 +85,6 @@ namespace smt {
             m(m),
             pb(m),
             m_rewrite(m),
-            m_cancel(false),
             m_orig_clauses(m),
             m_trail(m),
             one(mgr)
@@ -141,8 +139,7 @@ namespace smt {
             m_orig_model = mdl;
             for (unsigned i = 0; i < m_var2decl.size(); ++i) {
                 expr_ref tmp(m);
-                VERIFY(mdl->eval(m_var2decl[i], tmp));
-                m_assignment[i] = m.is_true(tmp);
+                m_assignment[i] = mdl->eval(m_var2decl[i], tmp) && m.is_true(tmp);
             }
         }
 
@@ -157,7 +154,7 @@ namespace smt {
                 while (m_max_flips > 0) {
                     --m_max_flips;
                     literal lit = flip();
-                    if (m_cancel) {
+                    if (m.canceled()) {
                         return l_undef;
                     }
                     IF_VERBOSE(3, verbose_stream() 
@@ -202,9 +199,6 @@ namespace smt {
 
         bool get_value(literal l) {
             return l.sign() ^ m_assignment[l.var()];
-        }
-        void set_cancel(bool f) {
-            m_cancel = f;
         }
         void get_model(model_ref& mdl) {
             mdl = alloc(model, m);
@@ -310,7 +304,9 @@ namespace smt {
                 if (!eval(m_clauses[i])) {
                     m_hard_false.insert(i);
                     expr_ref tmp(m);
-                    VERIFY(m_orig_model->eval(m_orig_clauses[i].get(), tmp));                    
+                    if (!m_orig_model->eval(m_orig_clauses[i].get(), tmp)) {
+                        return;
+                    }
                     IF_VERBOSE(0,                               
                                verbose_stream() << "original evaluation: " << tmp << "\n";
                                verbose_stream() << mk_pp(m_orig_clauses[i].get(), m) << "\n";
@@ -492,8 +488,7 @@ namespace smt {
                 SASSERT(m_soft_occ.size() == var);
                 m_hard_occ.push_back(unsigned_vector());
                 m_soft_occ.push_back(unsigned_vector());
-                VERIFY(m_orig_model->eval(f, tmp));
-                m_assignment.push_back(m.is_true(tmp));
+                m_assignment.push_back(m_orig_model->eval(f, tmp) && m.is_true(tmp));
                 m_decl2var.insert(f, var);
                 m_var2decl.push_back(f);
             }
@@ -718,9 +713,6 @@ namespace smt {
     }
     lbool pb_sls::operator()() {
         return (*m_imp)();
-    }
-    void pb_sls::set_cancel(bool f) {
-        m_imp->set_cancel(f);
     }
     void pb_sls::collect_statistics(statistics& st) const {
         m_imp->collect_statistics(st);

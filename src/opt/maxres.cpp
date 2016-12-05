@@ -82,6 +82,7 @@ private:
             memset(this, 0, sizeof(*this));
         }
     };
+    unsigned         m_index;
     stats            m_stats;
     expr_ref_vector  m_B;
     expr_ref_vector  m_asms;    
@@ -112,12 +113,13 @@ private:
     typedef ptr_vector<expr> exprs;
 
 public:
-    maxres(maxsat_context& c,
+    maxres(maxsat_context& c, unsigned index, 
            weights_t& ws, expr_ref_vector const& soft, 
            strategy_t st):
         maxsmt_solver_base(c, ws, soft),
+        m_index(index), 
         m_B(m), m_asms(m), m_defs(m),
-        m_mus(c.get_solver(), m),
+        m_mus(c.get_solver()),
         m_mss(c.get_solver(), m),
         m_trail(m),
         m_st(st),
@@ -153,14 +155,13 @@ public:
     
 
     void add_soft(expr* e, rational const& w) {
-        TRACE("opt", tout << mk_pp(e, m) << "\n";);
+        TRACE("opt", tout << mk_pp(e, m) << " |-> " << w << "\n";);
         expr_ref asum(m), fml(m);
         app_ref cls(m);
         rational weight(0);
         if (m_asm2weight.find(e, weight)) {
             weight += w;
             m_asm2weight.insert(e, weight);
-            m_upper += w;
             return;
         }
         if (is_literal(e)) {
@@ -172,7 +173,6 @@ public:
             s().assert_expr(fml);
         }
         new_assumption(asum, w);
-        m_upper += w;
     }
 
     void new_assumption(expr* e, rational const& w) {
@@ -188,18 +188,21 @@ public:
     }
 
     lbool mus_solver() {
-        init();
-        init_local();
+        lbool is_sat = l_true;
+        if (!init()) return l_undef;
+        is_sat = init_local();
         trace();
+        if (is_sat != l_true) return is_sat;
         while (m_lower < m_upper) {
+            if (m_lower >= m_upper) break;
             TRACE("opt", 
                   display_vec(tout, m_asms);
                   s().display(tout);
                   tout << "\n";
                   display(tout);
                   );
-            lbool is_sat = check_sat_hill_climb(m_asms);
-            if (m_cancel) {
+            is_sat = check_sat_hill_climb(m_asms);
+            if (m.canceled()) {
                 return l_undef;
             }
             switch (is_sat) {
@@ -226,13 +229,14 @@ public:
     }
 
     lbool primal_dual_solver() {
-        init();
-        init_local();
+        if (!init()) return l_undef;
+        lbool is_sat = init_local();
         trace();
         exprs cs;
+        if (is_sat != l_true) return is_sat;
         while (m_lower < m_upper) {
-            lbool is_sat = check_sat_hill_climb(m_asms);
-            if (m_cancel) {
+            is_sat = check_sat_hill_climb(m_asms);
+            if (m.canceled()) {
                 return l_undef;
             }
             switch (is_sat) {
@@ -265,7 +269,6 @@ public:
         trace();
         return l_true;
     }
-
 
     lbool check_sat_hill_climb(expr_ref_vector& asms1) {
         expr_ref_vector asms(asms1);
@@ -353,7 +356,7 @@ public:
         while (is_sat == l_false) {
             core.reset();
             s().get_unsat_core(core);
-            //verify_core(core);
+            // verify_core(core);
             model_ref mdl;
             get_mus_model(mdl);
             is_sat = minimize_core(core);
@@ -482,8 +485,9 @@ public:
         if (m_csmodel) {
             expr_ref val(m);
             SASSERT(m_csmodel.get());
-            VERIFY(m_csmodel->eval(value, val));
-            m_csmodel->register_decl(to_app(def)->get_decl(), val);
+            if (m_csmodel->eval(value, val, true)) {
+                m_csmodel->register_decl(to_app(def)->get_decl(), val);
+            }
         }
     }
     
@@ -507,7 +511,7 @@ public:
             --m_correction_set_size;
         }
         trace();
-        if (m_pivot_on_cs && m_csmodel.get() && m_correction_set_size < core.size()) {
+        if (m_c.num_objectives() == 1 && m_pivot_on_cs && m_csmodel.get() && m_correction_set_size < core.size()) {
             exprs cs;
             get_current_correction_set(m_csmodel.get(), cs);
             m_correction_set_size = cs.size();
@@ -540,17 +544,10 @@ public:
             return l_true;
         }
         m_mus.reset();
-        for (unsigned i = 0; i < core.size(); ++i) {
-            m_mus.add_soft(core[i]);
-        }
-        unsigned_vector mus_idx;
-        lbool is_sat = m_mus.get_mus(mus_idx);
+        m_mus.add_soft(core.size(), core.c_ptr());
+        lbool is_sat = m_mus.get_mus(m_new_core);
         if (is_sat != l_true) {
             return is_sat;
-        }
-        m_new_core.reset();
-        for (unsigned i = 0; i < mus_idx.size(); ++i) {
-            m_new_core.push_back(core[mus_idx[i]]);
         }
         core.reset();
         core.append(m_new_core);
@@ -723,17 +720,24 @@ public:
         if (upper >= m_upper) {
             return;
         }
+
+        if (!m_c.verify_model(m_index, mdl, upper)) {
+            return;
+        }
+
         m_model = mdl;
-        
+
         for (unsigned i = 0; i < m_soft.size(); ++i) {
             m_assignment[i] = is_true(m_soft[i]);
         }
+       
         DEBUG_CODE(verify_assignment(););
 
         m_upper = upper;
         trace();
 
         add_upper_bound_block();
+
     }
 
     void add_upper_bound_block() {
@@ -750,14 +754,12 @@ public:
 
     bool is_true(model* mdl, expr* e) {
         expr_ref tmp(m);
-        VERIFY(mdl->eval(e, tmp));
-        return m.is_true(tmp);
+        return mdl->eval(e, tmp, true) && m.is_true(tmp);
     }
 
     bool is_false(model* mdl, expr* e) {
         expr_ref tmp(m);
-        VERIFY(mdl->eval(e, tmp));
-        return m.is_false(tmp);
+        return mdl->eval(e, tmp, true) && m.is_false(tmp);
     }
 
     bool is_true(expr* e) {
@@ -785,11 +787,6 @@ public:
         remove_soft(core, m_asms);
     }
 
-    virtual void set_cancel(bool f) {
-        maxsmt_solver_base::set_cancel(f);
-        m_mus.set_cancel(f);
-    }
-
     virtual void updt_params(params_ref& p) {
         maxsmt_solver_base::updt_params(p);
         opt_params _p(p);
@@ -805,12 +802,17 @@ public:
         m_dump_benchmarks = _p.dump_benchmarks();
     }
 
-    void init_local() {
-        m_upper.reset();
+    lbool init_local() {
         m_lower.reset();
         m_trail.reset();
-        for (unsigned i = 0; i < m_soft.size(); ++i) {
-            add_soft(m_soft[i], m_weights[i]);
+        obj_map<expr, rational> new_soft;
+        lbool is_sat = find_mutexes(new_soft);
+        if (is_sat != l_true) {
+            return is_sat;
+        }
+        obj_map<expr, rational>::iterator it = new_soft.begin(), end = new_soft.end();
+        for (; it != end; ++it) {
+            add_soft(it->m_key, it->m_value);
         }
         m_max_upper = m_upper;
         m_found_feasible_optimum = false;
@@ -818,6 +820,7 @@ public:
         add_upper_bound_block();
         m_csmodel = 0;
         m_correction_set_size = 0;
+        return l_true;
     }
 
     virtual void commit_assignment() {
@@ -826,16 +829,10 @@ public:
                   tout << m_defs;
                   tout << m_asms;
                   );
-            for (unsigned i = 0; i < m_defs.size(); ++i) {
-                s().assert_expr(m_defs[i].get());
-            }
-            for (unsigned i = 0; i < m_asms.size(); ++i) {
-                s().assert_expr(m_asms[i].get());
-            }
+            s().assert_expr(m_defs);
+            s().assert_expr(m_asms);
         }
-        else {
-            maxsmt_solver_base::commit_assignment();
-        }
+        // else: there is only a single assignment to these soft constraints.
     }
 
     void verify_core(exprs const& core) {
@@ -844,9 +841,7 @@ public:
         for (unsigned i = 0; i < s().get_num_assertions(); ++i) {
             smt_solver->assert_expr(s().get_assertion(i));
         }
-        for (unsigned i = 0; i < core.size(); ++i) {
-            smt_solver->assert_expr(core[i]);
-        }
+        smt_solver->assert_expr(core);
         lbool is_sat = smt_solver->check_sat(0, 0);
         if (is_sat == l_true) {
             IF_VERBOSE(0, verbose_stream() << "not a core\n";);
@@ -876,12 +871,12 @@ public:
 };
 
 opt::maxsmt_solver_base* opt::mk_maxres(
-    maxsat_context& c, weights_t& ws, expr_ref_vector const& soft) {
-    return alloc(maxres, c, ws, soft, maxres::s_primal);
+    maxsat_context& c, unsigned id, weights_t& ws, expr_ref_vector const& soft) {
+    return alloc(maxres, c, id, ws, soft, maxres::s_primal);
 }
 
 opt::maxsmt_solver_base* opt::mk_primal_dual_maxres(
-    maxsat_context& c, weights_t& ws, expr_ref_vector const& soft) {
-    return alloc(maxres, c, ws, soft, maxres::s_primal_dual);
+    maxsat_context& c, unsigned id, weights_t& ws, expr_ref_vector const& soft) {
+    return alloc(maxres, c, id, ws, soft, maxres::s_primal_dual);
 }
 

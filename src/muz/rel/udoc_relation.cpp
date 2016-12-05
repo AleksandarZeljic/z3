@@ -23,7 +23,6 @@ Notes:
 --*/
 #include "udoc_relation.h"
 #include "dl_relation_manager.h"
-#include "qe_util.h"
 #include "ast_util.h"
 #include "smt_kernel.h"
 
@@ -405,7 +404,7 @@ namespace datalog {
         rename_fn(udoc_relation const& t, unsigned cycle_len, const unsigned * cycle) 
             : convenient_relation_rename_fn(t.get_signature(), cycle_len, cycle) {
             udoc_plugin& p = t.get_plugin();
-            ast_manager& m = p.get_ast_manager();
+            
             relation_signature const& sig1 = t.get_signature();
             relation_signature const& sig2 = get_result_signature();
             unsigned_vector permutation0, column_info;
@@ -430,6 +429,7 @@ namespace datalog {
             SASSERT(column == t.get_num_bits());
 
             TRACE("doc",
+                  ast_manager& m = p.get_ast_manager();
                   sig1.output(m, tout << "sig1: "); tout << "\n";
                   sig2.output(m, tout << "sig2: "); tout << "\n";
                   tout << "permute: ";

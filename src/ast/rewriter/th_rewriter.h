@@ -25,6 +25,8 @@ Notes:
 
 class expr_substitution;
 
+class expr_solver;
+
 class th_rewriter {
     struct     imp;
     imp *      m_imp;
@@ -45,9 +47,8 @@ public:
     void operator()(expr * t, expr_ref & result, proof_ref & result_pr);
     void operator()(expr * n, unsigned num_bindings, expr * const * bindings, expr_ref & result);
 
-    void cancel() { set_cancel(true); }
-    void reset_cancel() { set_cancel(false); }
-    void set_cancel(bool f);
+    expr_ref mk_app(func_decl* f, unsigned num_args, expr* const* args);
+
     void cleanup();
     void reset();
 
@@ -59,6 +60,9 @@ public:
     // Remark: reset_used_dependecies will reset the internal cache if get_used_dependencies() != 0
     expr_dependency * get_used_dependencies();
     void reset_used_dependencies();
+
+    void set_solver(expr_solver* solver);
+
 };
 
 #endif

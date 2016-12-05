@@ -48,7 +48,7 @@ tactic * or_else(tactic * t1, tactic * t2, tactic * t3, tactic * t4, tactic * t5
 tactic * repeat(tactic * t, unsigned max = UINT_MAX); 
 /**
    \brief Fails if \c t produeces more than \c threshold subgoals.
-   Otherwise, it behabes like \c t.
+   Otherwise, it behaves like \c t.
 */
 tactic * fail_if_branching(tactic * t, unsigned threshold = 1);
 
@@ -63,6 +63,7 @@ tactic * par_and_then(tactic * t1, tactic * t2);
 tactic * try_for(tactic * t, unsigned msecs);
 tactic * clean(tactic * t);
 tactic * using_params(tactic * t, params_ref const & p);
+tactic * annotate_tactic(char const* name, tactic * t);
 
 // Create a tactic that fails if the result returned by probe p is true.
 tactic * fail_if(probe * p);

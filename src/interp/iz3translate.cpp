@@ -132,7 +132,7 @@ public:
             // if(range_is_empty(r))
             range r = ast_scope(quanted);
             if(range_is_empty(r))
-                throw "can't skolemize";
+                throw iz3_exception("can't skolemize");
             if(frame == INT_MAX || !in_range(frame,r))
                 frame = range_max(r); // this is desperation -- may fail
             if(frame >= frames) frame = frames - 1;
@@ -342,6 +342,7 @@ public:
                     else
                         cls1.push_back(cls2[j]);
                 }
+                (void)found_pivot2;
                 assert(found_pivot2);
                 return;
             }
@@ -1082,8 +1083,10 @@ public:
             return best_coeff;
         }
         else
-            if(op(t) != Numeral)
+            if(op(t) != Numeral){
+                v = get_linear_var(t);
                 return(get_coeff(t));
+            }
         return rational(0);
     }
 
@@ -1092,10 +1095,10 @@ public:
         rational xcoeff = get_first_coefficient(arg(x,0),xvar);
         rational ycoeff = get_first_coefficient(arg(y,0),yvar);
         if(xcoeff == rational(0) || ycoeff == rational(0) || xvar != yvar)
-            throw "bad assign-bounds lemma";
+            throw unsupported();  // can be caused by non-linear arithmetic
         rational ratio = xcoeff/ycoeff;
         if(denominator(ratio) != rational(1))
-            throw "bad assign-bounds lemma";
+            throw unsupported(); // can this ever happen?
         return make_int(ratio); // better be integer!
     }
 
@@ -1104,7 +1107,7 @@ public:
         get_assign_bounds_coeffs(proof,farkas_coeffs);
         int nargs = num_args(con);
         if(nargs != (int)(farkas_coeffs.size()))
-            throw "bad assign-bounds theory lemma";
+            throw unsupported(); // should never happen
 #if 0
         if(farkas_coeffs[0] != make_int(rational(1)))
             farkas_coeffs[0] = make_int(rational(1));
@@ -1145,7 +1148,7 @@ public:
         get_assign_bounds_rule_coeffs(proof,farkas_coeffs);
         int nargs = num_prems(proof)+1;
         if(nargs != (int)(farkas_coeffs.size()))
-            throw "bad assign-bounds theory lemma";
+            throw iz3_exception("bad assign-bounds theory lemma");
 #if 0
         if(farkas_coeffs[0] != make_int(rational(1)))
             farkas_coeffs[0] = make_int(rational(1));
@@ -1201,9 +1204,12 @@ public:
         ast t = arg(my_con,0);
         ast c = arg(my_con,1);
         ast d = gcd_of_coefficients(t);
+        /*
         t = z3_simplify(mk_idiv(t,d));
         c = z3_simplify(mk_idiv(c,d));
         ast cut_con = make(op(my_con),t,c);
+        */
+        ast cut_con = con;
         return iproof->make_cut_rule(my_con,d,cut_con,res);
     }
 
@@ -1407,6 +1413,7 @@ public:
 
         hash_map<ast,ast> dual_map;
         std::vector<ast> cvec, vars_seen;
+        m().enable_int_real_coercions(true);
         ast rhs = make_real(rational(0));
         for(unsigned i = 0; i < npcons.size(); i++){
             ast c= mk_fresh_constant("@c",real_type());
@@ -1446,7 +1453,7 @@ public:
 
         std::vector<ast> vals = cvec;
         if(!is_sat(cnstrs,new_proof,vals))
-            throw "Proof error!";
+            throw iz3_exception("Proof error!");
         std::vector<rational> rat_farkas_coeffs;
         for(unsigned i = 0; i < cvec.size(); i++){
             ast bar = vals[i];
@@ -1454,7 +1461,7 @@ public:
             if(is_numeral(bar,r))
                 rat_farkas_coeffs.push_back(r);
             else
-                throw "Proof error!";
+                throw iz3_exception("Proof error!");
         }
         rational the_lcd = lcd(rat_farkas_coeffs);
         std::vector<ast> farkas_coeffs;
@@ -1502,7 +1509,7 @@ public:
         ast new_proof;
         std::vector<ast> dummy;
         if(is_sat(npcons,new_proof,dummy))
-            throw "Proof error!";
+            throw iz3_exception("Proof error!");
         pfrule dk = pr(new_proof);
         int nnp = num_prems(new_proof);
         std::vector<Iproof::node> my_prems;
@@ -1563,7 +1570,7 @@ public:
         ast new_proof;
         std::vector<ast> dummy;
         if(is_sat(npcons,new_proof,dummy))
-            throw "Proof error!";
+            throw iz3_exception("Proof error!");
         pfrule dk = pr(new_proof);
         int nnp = num_prems(new_proof);
         std::vector<Iproof::node> my_prems;
@@ -2017,8 +2024,8 @@ public:
                 break;
             }
             default:
-                pfgoto(proof);
-                assert(0 && "translate_main: unsupported proof rule");
+                //                pfgoto(proof);                
+                // SASSERT(0 && "translate_main: unsupported proof rule");
                 throw unsupported();
             }
         }

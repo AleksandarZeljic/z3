@@ -24,14 +24,18 @@ Revision History:
 #include"nlsat_types.h"
 #include"params.h"
 #include"statistics.h"
+#include"rlimit.h"
 
 namespace nlsat {
+
+    class evaluator;
+    class explain;
 
     class solver {
         struct imp;
         imp * m_imp;
     public:
-        solver(params_ref const & p);
+        solver(reslimit& rlim, params_ref const & p);
         ~solver();
 
         /**
@@ -62,7 +66,9 @@ namespace nlsat {
                   nonlinear arithmetic atom.
         */
         bool_var mk_bool_var();
-    
+   
+        literal  mk_true();
+
         /**
            \brief Create a real/integer variable.
         */
@@ -121,6 +127,48 @@ namespace nlsat {
         atom * bool_var2atom(bool_var b);
 
         /**
+           \brief extract free variables from literal.
+         */
+        void vars(literal l, var_vector& vs);
+
+        /**
+           \brief provide access to atoms. Used by explain.
+        */
+        atom_vector const& get_atoms();
+
+        /**
+           \brief Access var -> asserted equality.
+        */
+
+        atom_vector const& get_var2eq();        
+
+        /**
+           \brief expose evaluator.
+        */
+        
+        evaluator& get_evaluator();
+
+        /**
+           \brief Access explanation module.
+         */
+        explain& get_explain();
+
+        /**
+           \brief Access assignments to variables.
+         */
+        void get_rvalues(assignment& as);
+        void set_rvalues(assignment const& as);
+
+        void get_bvalues(svector<lbool>& vs);
+        void set_bvalues(svector<lbool> const& vs);
+
+        /**
+           \brief reorder variables. 
+         */
+        void reorder(unsigned sz, var const* permutation);
+        void restore_order();
+
+        /**
            \brief Return number of integer/real variables
         */
         unsigned num_vars() const;
@@ -133,6 +181,8 @@ namespace nlsat {
         //
         // -----------------------
         lbool check();
+
+        lbool check(literal_vector& assumptions);
 
         // -----------------------
         //
@@ -147,13 +197,21 @@ namespace nlsat {
 
         // -----------------------
         //
+        // Core
+        //
+        // -----------------------
+
+        void get_core(vector<assumption, false>& deps);
+
+        // -----------------------
+        //
         // Misc
         //
         // -----------------------
         void updt_params(params_ref const & p);
         static void collect_param_descrs(param_descrs & d);
 
-        void set_cancel(bool f);
+        void reset();
         void collect_statistics(statistics & st);
         void reset_statistics();
         void display_status(std::ostream & out) const;
@@ -173,6 +231,10 @@ namespace nlsat {
            \brief Display literal
         */
         void display(std::ostream & out, literal l) const;
+
+        void display(std::ostream & out, unsigned n, literal const* ls) const;
+
+        void display(std::ostream & out, atom const& a) const;
 
         /**
            \brief Display variable

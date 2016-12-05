@@ -29,49 +29,31 @@ public class FuncDecl extends AST
     /**
      * Object comparison.
      **/
+    @Override
     public boolean equals(Object o)
     {
-        FuncDecl casted = null;
+        if (o == this) return true;
+        if (!(o instanceof FuncDecl)) return false;
+        FuncDecl other = (FuncDecl) o;
 
-        try {
-            casted = FuncDecl.class.cast(o);
-        } catch (ClassCastException e) {
-            return false;
-        }
-
-	return  
-	    (this == casted) || 
-	    (this != null) &&
-	    (casted != null) &&
-	    (getContext().nCtx() == casted.getContext().nCtx()) &&
-	    (Native.isEqFuncDecl(getContext().nCtx(), getNativeObject(), casted.getNativeObject()));
+        return
+            (getContext().nCtx() == other.getContext().nCtx()) &&
+            (Native.isEqFuncDecl(
+                getContext().nCtx(),
+                getNativeObject(),
+                other.getNativeObject()));
     }
 
-    /**
-     * A hash code.
-     **/
-    public int hashCode()
-    {
-        return super.hashCode();
-    }
-
-    /**
-     * A string representations of the function declaration.
-     **/
+    @Override
     public String toString()
     {
-        try
-        {
-            return Native.funcDeclToString(getContext().nCtx(), getNativeObject());
-        } catch (Z3Exception e)
-        {
-            return "Z3Exception: " + e.getMessage();
-        }
+        return Native.funcDeclToString(getContext().nCtx(), getNativeObject());
     }
 
     /**
      * Returns a unique identifier for the function declaration.
      **/
+    @Override
     public int getId()
     {
         return Native.getFuncDeclId(getContext().nCtx(), getNativeObject());
@@ -87,7 +69,7 @@ public class FuncDecl extends AST
 
     /**
      * The size of the domain of the function declaration 
-     * @see getArity
+     * @see #getArity
      **/
     public int getDomainSize()
     {
@@ -370,9 +352,6 @@ public class FuncDecl extends AST
 
     /**
      * Create expression that applies function to arguments. 
-     * @param args 
-     * 
-     * @return
      **/
     public Expr apply(Expr ... args)
     {

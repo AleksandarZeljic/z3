@@ -149,7 +149,8 @@ namespace smt {
                     SASSERT(!contains_model_value(t));
                     unsigned gen = (*it).m_value;
                     expr * t_val = ev.eval(t, true);
-                    TRACE("model_finder", tout << mk_pp(t, m_manager) << "\n";);
+                    if (!t_val) break;
+                    TRACE("model_finder", tout << mk_pp(t, m_manager) << " " << mk_pp(t_val, m_manager) << "\n";);
 
                     expr * old_t = 0;
                     if (m_inv.find(t_val, old_t)) {
@@ -314,6 +315,7 @@ namespace smt {
 
             void mk_instantiation_set(ast_manager & m) {
                 SASSERT(is_root());
+                SASSERT(!m_set);
                 m_set = alloc(instantiation_set, m);
             }
 
@@ -828,7 +830,7 @@ namespace smt {
                 for (; it != end; ++it) {
                     expr *     t = (*it).m_key;
                     expr * t_val = eval(t, true);
-                    if (!already_found.contains(t_val)) {
+                    if (t_val && !already_found.contains(t_val)) {
                         values.push_back(t_val);
                         already_found.insert(t_val);
                     }
@@ -891,6 +893,7 @@ namespace smt {
                 add_mono_exceptions(n);
                 ptr_buffer<expr> values;
                 get_instantiation_set_values(n, values);
+                if (values.empty()) return;
                 sort_values(n, values);
                 sort * s = n->get_sort();
                 arith_simplifier_plugin * as = get_arith_simp();
@@ -915,7 +918,7 @@ namespace smt {
                 }
                 func_interp * rpi = alloc(func_interp, m_manager, 1);
                 rpi->set_else(pi);
-                m_model->register_decl(p, rpi, true);
+                m_model->register_aux_decl(p, rpi);
                 n->set_proj(p);
             }
 
@@ -928,7 +931,7 @@ namespace smt {
                 func_decl *   p  = m_manager.mk_fresh_func_decl(1, &s, s);
                 func_interp * pi = alloc(func_interp, m_manager, 1);
                 pi->set_else(else_val);
-                m_model->register_decl(p, pi, true);
+                m_model->register_aux_decl(p, pi);
                 ptr_buffer<expr>::const_iterator it  = values.begin();
                 ptr_buffer<expr>::const_iterator end = values.end();
                 for (; it != end; ++it) {
@@ -999,10 +1002,13 @@ namespace smt {
             void add_elem_to_empty_inst_sets() {
                 ptr_vector<node>::const_iterator it  = m_root_nodes.begin();
                 ptr_vector<node>::const_iterator end = m_root_nodes.end();
+                obj_map<sort, expr*> sort2elems;
+                ptr_vector<node> need_fresh;
                 for (; it != end; ++it) {
                     node * n = *it;
                     SASSERT(n->is_root());
                     instantiation_set const * s           = n->get_instantiation_set();
+                    TRACE("model_finder", s->display(tout););
                     obj_map<expr, unsigned> const & elems = s->get_elems();
                     if (elems.empty()) {
                         // The method get_some_value cannot be used if n->get_sort() is an uninterpreted sort or is a sort built using uninterpreted sorts 
@@ -1011,11 +1017,29 @@ namespace smt {
                         // If these module values "leak" inside the logical context, they may affect satisfiability.
                         // 
                         sort * ns = n->get_sort();
-                        if (m_manager.is_fully_interp(ns))
+                        if (m_manager.is_fully_interp(ns)) {
                             n->insert(m_model->get_some_value(ns), 0);
-                        else
-                            n->insert(m_manager.mk_fresh_const("elem", ns), 0);
+                        }
+                        else {
+                            need_fresh.push_back(n);
+                        }
                     }
+                    else {
+                        sort2elems.insert(n->get_sort(), elems.begin()->m_key);
+                    }
+                }
+                expr_ref_vector trail(m_manager);
+                for (unsigned i = 0; i < need_fresh.size(); ++i) {
+                    expr * e;
+                    node* n = need_fresh[i];
+                    sort* s = n->get_sort();
+                    if (!sort2elems.find(s, e)) {
+                        e = m_manager.mk_fresh_const("elem", s);
+                        trail.push_back(e);
+                        sort2elems.insert(s, e);
+                    }
+                    n->insert(e, 0);
+                    TRACE("model_finder", tout << "fresh constant: " << mk_pp(e, m_manager) << "\n";);
                 }
             }
 
@@ -1418,7 +1442,7 @@ namespace smt {
 
             func_decl * get_array_func_decl(app * ground_array, auf_solver & s) {
                 expr * ground_array_interp = s.eval(ground_array, false);
-                if (ground_array_interp != 0 && s.get_model()->is_array_value(ground_array_interp))
+                if (ground_array_interp != 0 && s.get_model()->is_as_array(ground_array_interp))
                     return to_func_decl(to_app(ground_array_interp)->get_decl()->get_parameter(0).get_ast());
                 return 0;
             }
@@ -1734,6 +1758,7 @@ namespace smt {
            (when it is marked as relevant in the end of the search).
         */
         class quantifier_info {
+            model_finder&            m_mf;
             quantifier_ref           m_flat_q; // flat version of the quantifier
             bool                     m_is_auf;
             bool                     m_has_x_eq_y;
@@ -1744,28 +1769,25 @@ namespace smt {
             // when the quantifier is satisfied by a macro/hint, it may not be processed by the AUF solver.
             // in this case, the quantifier_info stores the instantiation sets.
             ptr_vector<instantiation_set>  * m_uvar_inst_sets;
-            bool                     m_cancel;
 
             friend class quantifier_analyzer;
 
             void checkpoint() {
-                cooperate("quantifier_info");
-                if (m_cancel)
-                    throw tactic_exception(TACTIC_CANCELED_MSG);
+                m_mf.checkpoint("quantifer_info");
             }
 
             void insert_qinfo(qinfo * qi) {
                 // I'm assuming the number of qinfo's per quantifier is small. So, the linear search is not a big deal.
+                scoped_ptr<qinfo> q(qi);
                 ptr_vector<qinfo>::iterator it  = m_qinfo_vect.begin();            
                 ptr_vector<qinfo>::iterator end = m_qinfo_vect.end();            
                 for (; it != end; ++it) {
                     checkpoint();
                     if (qi->is_equal(*it)) {
-                        dealloc(qi);
                         return;
                     }
                 }
-                m_qinfo_vect.push_back(qi);
+                m_qinfo_vect.push_back(q.detach());
                 TRACE("model_finder", tout << "new quantifier qinfo: "; qi->display(tout); tout << "\n";);
             }
 
@@ -1776,13 +1798,13 @@ namespace smt {
         public:
             typedef ptr_vector<cond_macro>::const_iterator macro_iterator;
 
-            quantifier_info(ast_manager & m, quantifier * q):
+            quantifier_info(model_finder& mf, ast_manager & m, quantifier * q):
+                m_mf(mf),
                 m_flat_q(m),
                 m_is_auf(true),
                 m_has_x_eq_y(false),
                 m_the_one(0),
-                m_uvar_inst_sets(0),
-                m_cancel(false) {
+                m_uvar_inst_sets(0) {
                 if (has_quantifiers(q->get_expr())) {
                     static bool displayed_flat_msg = false;
                     if (!displayed_flat_msg) {
@@ -1893,8 +1915,10 @@ namespace smt {
                     (*it)->populate_inst_sets(m_flat_q, s, ctx);
                 // second pass
                 it  = m_qinfo_vect.begin();
-                for (; it != end; ++it)
+                for (; it != end; ++it) {
+                    checkpoint();
                     (*it)->populate_inst_sets2(m_flat_q, s, ctx);
+                }
             }
 
             func_decl_set const & get_ng_decls() const {
@@ -1934,8 +1958,6 @@ namespace smt {
                     m_uvar_inst_sets = 0;
                 }
             }
-
-            void set_cancel(bool f) { m_cancel = f; }
         };
         
         /**
@@ -1943,12 +1965,12 @@ namespace smt {
            fill the structure quantifier_info.
         */
         class quantifier_analyzer {
+            model_finder&        m_mf;
             ast_manager &        m_manager;
             macro_util           m_mutil;
             array_util           m_array_util;
             arith_util           m_arith_util;
             bv_util              m_bv_util;
-            bool                 m_cancel;
 
             quantifier_info *    m_info;
 
@@ -2361,9 +2383,7 @@ namespace smt {
             }
 
             void checkpoint() {
-                cooperate("quantifier_analyzer");
-                if (m_cancel)
-                    throw tactic_exception(TACTIC_CANCELED_MSG);
+                m_mf.checkpoint("quantifier_analyzer");
             }
             
             void process_formulas_on_stack() {
@@ -2453,13 +2473,13 @@ namespace smt {
             
  
         public:
-            quantifier_analyzer(ast_manager & m, simplifier & s):
+            quantifier_analyzer(model_finder& mf, ast_manager & m, simplifier & s):
+                m_mf(mf),
                 m_manager(m),
                 m_mutil(m, s),
                 m_array_util(m), 
                 m_arith_util(m),
                 m_bv_util(m),
-                m_cancel(false),
                 m_info(0) {
             }
             
@@ -2488,11 +2508,6 @@ namespace smt {
                 collect_macro_candidates(q);
                 
                 m_info = 0;
-            }
-
-            void set_cancel(bool f) { 
-                m_cancel = f; 
-                if (m_info) m_info->set_cancel(f);
             }
 
         };
@@ -2906,15 +2921,16 @@ namespace smt {
             }
             
             bool check_satisfied_residue_invariant() {
-                qsset::iterator it  = m_satisfied.begin();
-                qsset::iterator end = m_satisfied.end();
-                for (; it != end; ++it) {
-                    quantifier * q = *it;
-                    SASSERT(!m_residue.contains(q));
-                    quantifier_info * qi = get_qinfo(q);
-                    SASSERT(qi != 0);
-                    SASSERT(qi->get_the_one() != 0);
-                }
+                DEBUG_CODE(
+                    qsset::iterator it  = m_satisfied.begin();
+                    qsset::iterator end = m_satisfied.end();
+                    for (; it != end; ++it) {
+                        quantifier * q = *it;
+                        SASSERT(!m_residue.contains(q));
+                        quantifier_info * qi = get_qinfo(q);
+                        SASSERT(qi != 0);
+                        SASSERT(qi->get_the_one() != 0);
+                    });
                 return true;
             }
 
@@ -3307,13 +3323,12 @@ namespace smt {
     model_finder::model_finder(ast_manager & m, simplifier & s):
         m_manager(m),
         m_context(0),
-        m_analyzer(alloc(quantifier_analyzer, m, s)),
+        m_analyzer(alloc(quantifier_analyzer, *this, m, s)),
         m_auf_solver(alloc(auf_solver, m, s)),
         m_dependencies(m),
         m_sm_solver(alloc(simple_macro_solver, m, m_q2info)),
         m_hint_solver(alloc(hint_solver, m, m_q2info)),
         m_nm_solver(alloc(non_auf_macro_solver, m, m_q2info, m_dependencies)),
-        m_cancel(false),
         m_new_constraints(m) {
     }
     
@@ -3321,6 +3336,16 @@ namespace smt {
         reset();
     }
         
+    void model_finder::checkpoint() {
+        checkpoint("model_finder");
+    }
+
+    void model_finder::checkpoint(char const* msg) {
+        cooperate(msg);
+        if (m_context && m_context->get_cancel_flag())
+            throw tactic_exception(m_context->get_manager().limit().get_cancel_msg());
+    }
+
     mf::quantifier_info * model_finder::get_quantifier_info(quantifier * q) const {
         quantifier_info * info = 0;
         m_q2info.find(q, info);
@@ -3337,7 +3362,7 @@ namespace smt {
             
     void model_finder::register_quantifier(quantifier * q) {
         TRACE("model_finder", tout << "registering:\n" << mk_pp(q, m_manager) << "\n";);
-        quantifier_info * new_info = alloc(quantifier_info, m_manager, q);
+        quantifier_info * new_info = alloc(quantifier_info, *this, m_manager, q);
         m_q2info.insert(q, new_info);
         m_quantifiers.push_back(q);
         m_analyzer->operator()(new_info);
@@ -3542,14 +3567,10 @@ namespace smt {
         //
         // Since we only care about q (and its bindings), it only makes sense to restrict the variables of q.
         bool asserted_something = false;
-        quantifier * flat_q = get_flat_quantifier(q);
         unsigned num_decls      = q->get_num_decls();
-        unsigned flat_num_decls = flat_q->get_num_decls();
-        unsigned num_sks        = sks.size();
         // Remark: sks were created for the flat version of q.
-        SASSERT(num_sks == flat_num_decls);
-        SASSERT(flat_num_decls >= num_decls);
-        SASSERT(num_sks >= num_decls);
+        SASSERT(get_flat_quantifier(q)->get_num_decls() == sks.size());
+        SASSERT(sks.size() >= num_decls);
         for (unsigned i = 0; i < num_decls; i++) {
             expr * sk = sks.get(num_decls - i - 1);
             instantiation_set const * s = get_uvar_inst_set(q, i);
@@ -3589,10 +3610,4 @@ namespace smt {
             m_new_constraints.reset();
         }
     }
-
-    void model_finder::set_cancel(bool f) {
-        m_cancel = f;
-        m_analyzer->set_cancel(f);
-    }
-
 };

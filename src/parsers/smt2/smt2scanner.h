@@ -34,6 +34,7 @@ namespace smt2 {
         bool               m_interactive;
         int                m_spos; // position in the current line of the stream
         char               m_curr;  // current char;
+        bool               m_at_eof;
         
         int                m_line;  // line
         int                m_pos;   // start position of the token
@@ -42,7 +43,7 @@ namespace smt2 {
         rational           m_number;
         unsigned           m_bv_size;
         // end of data
-        char               m_normalized[256];
+        signed char        m_normalized[256];
 #define SCANNER_BUFFER_SIZE 1024
         char               m_buffer[SCANNER_BUFFER_SIZE];
         unsigned           m_bpos;

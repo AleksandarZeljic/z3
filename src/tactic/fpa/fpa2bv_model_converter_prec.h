@@ -27,51 +27,55 @@ class fpa2bv_model_converter_prec : public model_converter {
     obj_map<func_decl, expr*>   m_const2bv;
     obj_map<func_decl, expr*>   m_rm_const2bv;
     obj_map<func_decl, func_decl*>  m_uf2bvuf;
-    obj_map<func_decl, func_decl_triple>  m_uf23bvuf;
+    obj_map<func_decl, std::pair<app *, app *> > m_min_max_specials;
 
 public:
-    fpa2bv_model_converter_prec(ast_manager & m, obj_map<func_decl, expr*> const & const2bv,
-                                obj_map<func_decl, expr*> const & rm_const2bv,
-                                obj_map<func_decl, func_decl*> const & uf2bvuf,
-                                obj_map<func_decl, func_decl_triple> const & uf23bvuf) :
-                                m(m) {
-        // Just create a copy?
-        for (obj_map<func_decl, expr*>::iterator it = const2bv.begin();
-             it != const2bv.end();
+    fpa2bv_model_converter_prec(ast_manager & m, fpa2bv_converter_prec const & conv) : m(m) {
+        for (obj_map<func_decl, expr*>::iterator it = conv.m_const2bv.begin();
+             it != conv.m_const2bv.end();
              it++)
         {
             m_const2bv.insert(it->m_key, it->m_value);
             m.inc_ref(it->m_key);
             m.inc_ref(it->m_value);
         }
-        for (obj_map<func_decl, expr*>::iterator it = rm_const2bv.begin();
-             it != rm_const2bv.end();
+        for (obj_map<func_decl, expr*>::iterator it = conv.m_rm_const2bv.begin();
+             it != conv.m_rm_const2bv.end();
              it++)
         {
             m_rm_const2bv.insert(it->m_key, it->m_value);
             m.inc_ref(it->m_key);
             m.inc_ref(it->m_value);
         }
-        for (obj_map<func_decl, func_decl*>::iterator it = uf2bvuf.begin();
-             it != uf2bvuf.end();
+        for (obj_map<func_decl, func_decl*>::iterator it = conv.m_uf2bvuf.begin();
+             it != conv.m_uf2bvuf.end();
              it++)
         {
             m_uf2bvuf.insert(it->m_key, it->m_value);
             m.inc_ref(it->m_key);
             m.inc_ref(it->m_value);
         }
-        for (obj_map<func_decl, func_decl_triple>::iterator it = uf23bvuf.begin();
-             it != uf23bvuf.end();
-             it++)
-        {
-            m_uf23bvuf.insert(it->m_key, it->m_value);
+        for (obj_map<func_decl, std::pair<app*, app*> >::iterator it = conv.m_min_max_specials.begin();
+             it != conv.m_min_max_specials.end();
+             it++) {
+            m_min_max_specials.insert(it->m_key, it->m_value);
             m.inc_ref(it->m_key);
+            m.inc_ref(it->m_value.first);
+            m.inc_ref(it->m_value.second);
         }
     }
 
     virtual ~fpa2bv_model_converter_prec() {
         dec_ref_map_key_values(m, m_const2bv);
         dec_ref_map_key_values(m, m_rm_const2bv);
+        dec_ref_map_key_values(m, m_uf2bvuf);
+        for (obj_map<func_decl, std::pair<app*, app*> >::iterator it = m_min_max_specials.begin();
+             it != m_min_max_specials.end();
+             it++) {
+            m.dec_ref(it->m_key);
+            m.dec_ref(it->m_value.first);
+            m.dec_ref(it->m_value.second);
+        }
     }
 
     virtual void operator()(model_ref & md, unsigned goal_idx) {
@@ -94,13 +98,13 @@ protected:
     fpa2bv_model_converter_prec(ast_manager & m) : m(m) {}
 
     void convert(model * bv_mdl, model * float_mdl);
+    expr_ref convert_bv2fp(sort * s, expr * sgn, expr * exp, expr * sig) const;
+    expr_ref convert_bv2fp(model * bv_mdl, sort * s, expr * bv) const;
+    expr_ref convert_bv2rm(expr * eval_v) const;
+    expr_ref convert_bv2rm(model * bv_mdl, func_decl * var, expr * val) const;
 };
 
 
-model_converter * mk_fpa2bv_model_converter_prec(ast_manager & m,
-                                                 obj_map<func_decl, expr*> const & const2bv,
-                                                 obj_map<func_decl, expr*> const & rm_const2bv,
-                                                 obj_map<func_decl, func_decl*> const & uf2bvuf,
-                                                 obj_map<func_decl, func_decl_triple> const & uf23bvuf);
+model_converter * mk_fpa2bv_model_converter_prec(ast_manager & m, fpa2bv_converter_prec const & conv);
 
 #endif

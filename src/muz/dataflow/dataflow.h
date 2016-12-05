@@ -72,7 +72,7 @@ namespace datalog {
                     }
                     e->get_data().m_value->push_back(cur);
                 }
-                if (cur->get_uninterpreted_tail_size() == 0) {
+                if (cur->get_positive_tail_size() == 0) {
                     func_decl *sym = cur->get_head()->get_decl();
                     bool new_info = m_facts.insert_if_not_there2(sym, Fact())->get_data().m_value.init_up(m_context, cur);
                     if (new_info) {
@@ -87,6 +87,7 @@ namespace datalog {
             for (func_decl_set::iterator I = output_preds.begin(),
                 E = output_preds.end(); I != E; ++I) {
                 func_decl* sym = *I;
+                TRACE("dl", tout << sym->get_name() << "\n";);
                 const rule_vector& output_rules = m_rules.get_predicate_rules(sym);
                 for (unsigned i = 0; i < output_rules.size(); ++i) {
                     m_facts.insert_if_not_there2(sym, Fact())->get_data().m_value.init_down(m_context, output_rules[i]);
@@ -96,7 +97,7 @@ namespace datalog {
         }
 
         void step_bottom_up() {
-            for(todo_set::iterator I = m_todo[m_todo_idx].begin(),
+            for(todo_set::iterator I = m_todo[m_todo_idx].begin(),                    
                 E = m_todo[m_todo_idx].end(); I!=E; ++I) {
                 ptr_vector<rule> * rules; 
                 if (!m_body2rules.find(*I, rules))
@@ -235,7 +236,7 @@ namespace datalog {
             return m_facts.get(m_rule->get_decl(idx), Fact::null_fact);
         }
         unsigned size() const {
-            return m_rule->get_uninterpreted_tail_size();
+            return m_rule->get_positive_tail_size();
         }
     };
 

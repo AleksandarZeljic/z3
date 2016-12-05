@@ -27,25 +27,20 @@ public class Sort extends AST
 {
     /**
      * Equality operator for objects of type Sort. 
-     * @param o
-     * @return
      **/
+    @Override
     public boolean equals(Object o)
     {
-        Sort casted = null;
+        if (o == this) return true;
+        if (!(o instanceof Sort)) return false;
+        Sort other = (Sort) o;
 
-        try {
-            casted = Sort.class.cast(o);
-        } catch (ClassCastException e) {
-            return false;
-        }
-
-	return  
-	    (this == casted) || 
-	    (this != null) &&
-	    (casted != null) &&
-	    (getContext().nCtx() == casted.getContext().nCtx()) &&
-	    (Native.isEqSort(getContext().nCtx(), getNativeObject(), casted.getNativeObject()));
+	return  (getContext().nCtx() == other.getContext().nCtx()) &&
+	    (Native.isEqSort(
+            getContext().nCtx(),
+            getNativeObject(),
+            other.getNativeObject()
+        ));
     }
 
     /**
@@ -87,15 +82,9 @@ public class Sort extends AST
     /**
      * A string representation of the sort.
      **/
-    public String toString()
-    {
-        try
-        {
-            return Native.sortToString(getContext().nCtx(), getNativeObject());
-        } catch (Z3Exception e)
-        {
-            return "Z3Exception: " + e.getMessage();
-        }
+    @Override
+    public String toString() {
+        return Native.sortToString(getContext().nCtx(), getNativeObject());
     }
 
     /**
@@ -106,6 +95,7 @@ public class Sort extends AST
         super(ctx, obj);
     }
 
+    @Override
     void checkNativeObject(long obj)
     {
         if (Native.getAstKind(getContext().nCtx(), obj) != Z3_ast_kind.Z3_SORT_AST
@@ -141,6 +131,10 @@ public class Sort extends AST
             return new FPSort(ctx, obj);
         case Z3_ROUNDING_MODE_SORT:
             return new FPRMSort(ctx, obj);
+        case Z3_SEQ_SORT:
+            return new SeqSort(ctx, obj);
+        case Z3_RE_SORT:
+            return new ReSort(ctx, obj);
         default:
             throw new Z3Exception("Unknown sort kind");
         }

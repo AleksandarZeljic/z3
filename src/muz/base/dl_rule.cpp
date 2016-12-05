@@ -55,8 +55,7 @@ namespace datalog {
           m_args(m),
           m_hnf(m),
           m_qe(m),
-          m_cfg(m),
-          m_rwr(m, false, m_cfg),
+          m_rwr(m),
           m_ufproc(m) {}
 
     void rule_manager::inc_ref(rule * r) {
@@ -76,28 +75,8 @@ namespace datalog {
         }
     }
 
-    rule_manager::remove_label_cfg::~remove_label_cfg() {}
-
-    br_status rule_manager::remove_label_cfg::reduce_app(func_decl * f, unsigned num, expr * const * args, expr_ref & result, 
-                                                         proof_ref & result_pr)
-    {
-        if (is_decl_of(f, m_label_fid, OP_LABEL)) {
-            SASSERT(num == 1);
-            result = args[0];
-            return BR_DONE;
-        }
-        return BR_FAILED;
-    }
-
-
     void rule_manager::remove_labels(expr_ref& fml, proof_ref& pr) {
-        expr_ref tmp(m);
-        m_rwr(fml, tmp);
-        if (pr && fml != tmp) {
-            
-            pr = m.mk_modus_ponens(pr, m.mk_rewrite(fml, tmp));
-        }
-        fml = tmp;
+        m_rwr.remove_labels(fml, pr);
     }
 
     var_idx_set& rule_manager::collect_vars(expr* e) {
@@ -282,6 +261,8 @@ namespace datalog {
 
 
     func_decl* rule_manager::mk_query(expr* query, rule_set& rules) {
+        TRACE("dl", tout << mk_pp(query, m) << "\n";);
+            
         ptr_vector<sort> vars;
         svector<symbol> names;
         app_ref_vector body(m);
@@ -290,6 +271,7 @@ namespace datalog {
         // Add implicit variables.
         // Remove existential prefix.
         bind_variables(query, false, q);
+
         quantifier_hoister qh(m);
         qh.pull_quantifier(false, q, 0, &names);
         // retrieve free variables.
@@ -358,6 +340,7 @@ namespace datalog {
         if (!vars.empty()) {
             rule_expr = m.mk_forall(vars.size(), vars.c_ptr(), names.c_ptr(), impl);
         }
+        TRACE("dl", tout << rule_expr << "\n";);
 
         scoped_proof_mode _sc(m, m_ctx.generate_proof_trace()?PGM_FINE:PGM_DISABLED);
         proof_ref pr(m);
@@ -1088,5 +1071,4 @@ namespace datalog {
     
 };
 
-template class rewriter_tpl<datalog::rule_manager::remove_label_cfg>;
 

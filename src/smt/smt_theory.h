@@ -22,6 +22,7 @@ Revision History:
 #include"smt_enode.h"
 #include"obj_hashtable.h"
 #include"statistics.h"
+#include<typeinfo>
 
 namespace smt {
     class model_generator;
@@ -314,10 +315,7 @@ namespace smt {
             return m_var2enode_lim[m_var2enode_lim.size() - num_scopes];
         }
         
-        virtual void display(std::ostream & out) const {
-            out << "Theory " << static_cast<int>(get_id()) << " does not have a display method\n";
-            display_var2enode(out);
-        }
+        virtual void display(std::ostream & out) const = 0;
 
         virtual void display_var2enode(std::ostream & out) const;
         
@@ -410,6 +408,10 @@ namespace smt {
         */
         virtual model_value_proc * mk_value(enode * n, model_generator & mg) {
             return 0;
+        }
+
+        virtual bool include_func_interp(func_decl* f) {
+            return false;
         }
 
         // -----------------------------------

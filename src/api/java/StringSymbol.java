@@ -44,12 +44,13 @@ public class StringSymbol extends Symbol
         super(ctx, Native.mkStringSymbol(ctx.nCtx(), s));
     }
 
+    @Override
     void checkNativeObject(long obj)
     {
         if (Native.getSymbolKind(getContext().nCtx(), obj) != Z3_symbol_kind.Z3_STRING_SYMBOL
-                .toInt())
+                .toInt()) {
             throw new Z3Exception("Symbol is not of String kind");
-
+        }
         super.checkNativeObject(obj);
     }
 }

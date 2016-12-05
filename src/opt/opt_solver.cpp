@@ -44,7 +44,8 @@ namespace opt {
         m_fm(fm),
         m_objective_terms(m),
         m_dump_benchmarks(false),
-        m_first(true) {
+        m_first(true),
+        m_was_unknown(false) {
         m_params.updt_params(p);
         if (m_params.m_case_split_strategy == CS_ACTIVITY_DELAY_NEW) {
             m_params.m_relevancy_lvl = 0;
@@ -63,6 +64,11 @@ namespace opt {
         m_context.updt_params(_p);
     }
 
+    solver* opt_solver::translate(ast_manager& m, params_ref const& p) {
+        UNREACHABLE();
+        return 0;
+    }
+
     void opt_solver::collect_param_descrs(param_descrs & r) {
         m_context.collect_param_descrs(r);
     }
@@ -72,6 +78,9 @@ namespace opt {
     }
     
     void opt_solver::assert_expr(expr * t) {
+        if (has_quantifiers(t)) {
+            m_params.m_relevancy_lvl = 2;
+        }
         m_context.assert_expr(t);
     }
     
@@ -156,7 +165,7 @@ namespace opt {
             std::stringstream file_name;
             file_name << "opt_solver" << ++m_dump_count << ".smt2";
             std::ofstream buffer(file_name.str().c_str());
-            to_smt2_benchmark(buffer, num_assumptions, assumptions, "opt_solver", "");
+            to_smt2_benchmark(buffer, num_assumptions, assumptions, "opt_solver");
             buffer.close();
             IF_VERBOSE(1, verbose_stream() << "(created benchmark: " << file_name.str() << "...";
                        verbose_stream().flush(););
@@ -168,6 +177,7 @@ namespace opt {
         else {
             r = m_context.check(num_assumptions, assumptions);
         }
+        r = adjust_result(r);
         m_first = false;
         if (dump_benchmarks()) {
             w.stop();
@@ -183,6 +193,15 @@ namespace opt {
             blockers.push_back(blocker);
         }
     }
+
+    lbool opt_solver::find_mutexes(expr_ref_vector const& vars, vector<expr_ref_vector>& mutexes) {
+        return m_context.find_mutexes(vars, mutexes);
+    }
+
+    lbool opt_solver::preferred_sat(expr_ref_vector const& asms, vector<expr_ref_vector>& cores) {
+        return m_context.preferred_sat(asms, cores);
+    }
+
 
 
     /**
@@ -237,6 +256,7 @@ namespace opt {
         TRACE("opt", tout << ge << "\n";);
         assert_expr(ge);
         lbool is_sat = m_context.check(0, 0);
+        is_sat = adjust_result(is_sat);
         if (is_sat == l_true) {
             set_model(i);
         }
@@ -256,6 +276,13 @@ namespace opt {
 
     }
 
+    lbool opt_solver::adjust_result(lbool r) {
+        if (r == l_undef && m_context.last_failure() == smt::QUANTIFIERS) {
+            r = l_true;
+            m_was_unknown = true;
+        }
+        return r;
+    }
     
     void opt_solver::get_unsat_core(ptr_vector<expr> & r) {
         unsigned sz = m_context.get_unsat_core_size();
@@ -275,17 +302,18 @@ namespace opt {
     std::string opt_solver::reason_unknown() const {
         return m_context.last_failure_as_string();
     }
+
+    void opt_solver::set_reason_unknown(char const* msg) {
+        m_context.set_reason_unknown(msg);
+    }
     
     void opt_solver::get_labels(svector<symbol> & r) {
+        r.reset();
         buffer<symbol> tmp;
         m_context.get_relevant_labels(0, tmp);
         r.append(tmp.size(), tmp.c_ptr());
     }
-    
-    void opt_solver::set_cancel(bool f) {
-        m_context.set_cancel(f);
-    }
-    
+        
     void opt_solver::set_progress_callback(progress_callback * callback) {
         m_callback = callback;
         m_context.set_progress_callback(callback);
@@ -300,8 +328,9 @@ namespace opt {
         return m_context.get_formulas()[idx];
     }
     
-    void opt_solver::display(std::ostream & out) const {
+    std::ostream& opt_solver::display(std::ostream & out) const {
         m_context.display(out);
+        return out;
     }
     
     smt::theory_var opt_solver::add_objective(app* term) {
@@ -328,6 +357,9 @@ namespace opt {
     }
     
     expr_ref opt_solver::mk_ge(unsigned var, inf_eps const& val) {
+        if (!val.is_finite()) {
+            return expr_ref(val.is_pos() ? m.mk_false() : m.mk_true(), m);
+        }
         smt::theory_opt& opt = get_optimizer();
         smt::theory_var v = m_objective_vars[var];
 
@@ -384,7 +416,7 @@ namespace opt {
         unsigned num_assumptions, 
         expr * const * assumptions,
         char const * name, 
-        char const * logic, 
+        symbol const& logic,
         char const * status, 
         char const * attributes) {        
         ast_smt_pp pp(m);

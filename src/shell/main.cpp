@@ -66,7 +66,7 @@ void display_usage() {
 #ifdef Z3GITHASH
     std::cout << " - build hashcode " << STRINGIZE_VALUE_OF(Z3GITHASH);
 #endif
-    std::cout << "]. (C) Copyright 2006-2014 Microsoft Corp.\n";
+    std::cout << "]. (C) Copyright 2006-2016 Microsoft Corp.\n";
     std::cout << "Usage: z3 [options] [-file:]file\n";
     std::cout << "\nInput format:\n";
     std::cout << "  -smt        use parser for SMT input format.\n";
@@ -154,7 +154,18 @@ void parse_cmd_line_args(int argc, char ** argv) {
                 exit(0);
             }
             if (strcmp(opt_name, "version") == 0) {
-                std::cout << "Z3 version " << Z3_MAJOR_VERSION << "." << Z3_MINOR_VERSION << "." << Z3_BUILD_NUMBER << "\n";
+                std::cout << "Z3 version " << Z3_MAJOR_VERSION << "." << Z3_MINOR_VERSION << "." << Z3_BUILD_NUMBER;
+                std::cout << " - ";
+#ifdef _AMD64_
+                std::cout << "64";
+#else
+                std::cout << "32";
+#endif
+                std::cout << " bit";
+#ifdef Z3GITHASH
+                std::cout << " - build hashcode " << STRINGIZE_VALUE_OF(Z3GITHASH);
+#endif
+                std::cout << "\n";
                 exit(0);
             }
             else if (strcmp(opt_name, "smt") == 0) {
@@ -291,7 +302,7 @@ char const * get_extension(char const * file_name) {
     }
 }
 
-int main(int argc, char ** argv) {
+int STD_CALL main(int argc, char ** argv) {
     try{
         unsigned return_value = 0;
         memory::initialize(0);

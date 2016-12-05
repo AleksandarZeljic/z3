@@ -58,7 +58,7 @@ namespace sat {
     }
 
     lbool mus::operator()() {
-        flet<bool> _disable_min(s.m_config.m_minimize_core, false);
+        flet<bool> _disable_min(s.m_config.m_core_minimize, false);
         flet<bool> _disable_opt(s.m_config.m_optimize_model, false);
         flet<bool> _is_active(m_is_active, true);
         IF_VERBOSE(3, verbose_stream() << "(sat.mus " << s.get_core() << ")\n";);
@@ -69,7 +69,7 @@ namespace sat {
     }
 
     lbool mus::mus1() {
-        bool minimize_partial = s.m_config.m_minimize_core_partial;
+        bool minimize_partial = s.m_config.m_core_minimize_partial;
         TRACE("sat", tout << "old core: " << s.get_core() << "\n";);
         literal_vector& core = get_core();
         literal_vector& mus = m_mus;
@@ -84,7 +84,7 @@ namespace sat {
                   tout << "core: " << core << "\n";
                   tout << "mus:  " << mus  << "\n";);
 
-            if (s.m_cancel) {
+            if (s.canceled()) {
                 set_core();
                 return l_undef;
             }
@@ -96,8 +96,8 @@ namespace sat {
                 // IF_VERBOSE(0, verbose_stream() << "num literals: " << core << " " << mus << "\n";);
                 break;
             }
-            if (s.m_config.m_minimize_core_partial && s.m_stats.m_restart - m_restart > m_max_restarts) {
-                IF_VERBOSE(1, verbose_stream() << "restart budget exceeded\n";);
+            if (s.m_config.m_core_minimize_partial && s.m_stats.m_restart - m_restart > m_max_restarts) {
+                IF_VERBOSE(1, verbose_stream() << "(sat restart budget exceeded)\n";);
                 set_core();
                 return l_true;
             }
@@ -172,8 +172,8 @@ namespace sat {
 
     lbool mus::qx(literal_set& assignment, literal_set& support, bool has_support) {
         lbool is_sat = l_true;
-        if (s.m_config.m_minimize_core_partial && s.m_stats.m_restart - m_restart > m_max_restarts) {
-            IF_VERBOSE(1, verbose_stream() << "restart budget exceeded\n";);
+        if (s.m_config.m_core_minimize_partial && s.m_stats.m_restart - m_restart > m_max_restarts) {
+            IF_VERBOSE(1, verbose_stream() << "(sat restart budget exceeded)\n";);
             return l_true;
         }
         if (has_support) {

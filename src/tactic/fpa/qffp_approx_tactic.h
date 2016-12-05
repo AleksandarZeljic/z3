@@ -26,7 +26,7 @@ class tactic;
 
 tactic * mk_qffp_approx_tactic(ast_manager & m, params_ref const & p = params_ref());
 /*
-  ADD_TACTIC("qffp_approx", "(try to) solve goal using the tactic for QF_FP.", "mk_qffp_approx_tactic(m, p)")
+  ADD_TACTIC("qffp-approx", "A tactic for QF_FP problems that uses the small-float approximation.", "mk_qffp_approx_tactic(m, p)")
 */
 
 #endif

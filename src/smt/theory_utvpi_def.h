@@ -223,7 +223,7 @@ namespace smt {
               );
         
         if (m_params.m_arith_dump_lemmas) {
-            char const * logic = m_lra ? (m_lia?"QF_LIRA":"QF_LRA") : "QF_LIA";
+            symbol logic(m_lra ? (m_lia?"QF_LIRA":"QF_LRA") : "QF_LIA");
             ctx.display_lemma_as_smt_problem(lits.size(), lits.c_ptr(), false_literal, logic);
         }
         
@@ -250,7 +250,7 @@ namespace smt {
             std::stringstream msg;
             msg << "found non utvpi logic expression:\n" << mk_pp(n, get_manager()) << "\n";
             TRACE("utvpi", tout << msg.str(););
-            warning_msg(msg.str().c_str());
+            warning_msg("%s", msg.str().c_str());
             get_context().push_trail(value_trail<context, bool>(m_non_utvpi_exprs));
             m_non_utvpi_exprs = true;
         }
@@ -942,6 +942,10 @@ namespace smt {
         }
     }
 
+    template<typename Ext>
+    theory* theory_utvpi<Ext>::mk_fresh(context* new_ctx) { 
+        return alloc(theory_utvpi<Ext>, new_ctx->get_manager()); 
+    }
 
 
 };

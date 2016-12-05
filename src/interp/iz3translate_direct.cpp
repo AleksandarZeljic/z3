@@ -362,6 +362,7 @@ public:
                     else
                         cls1.push_back(cls2[j]);
                 }
+                (void)found_pivot2;
                 assert(found_pivot2);
                 return;
             }
@@ -595,7 +596,9 @@ public:
     }
 
 
-    struct invalid_lemma {};
+    struct invalid_lemma: public iz3_exception {
+        invalid_lemma(): iz3_exception("invalid_lemma") {}
+    };
 
 
 
@@ -846,7 +849,9 @@ public:
             return 1;
     }
 
-    struct non_lit_local_ante {};
+    struct non_lit_local_ante: public iz3_exception {
+        non_lit_local_ante(): iz3_exception("non_lit_local_ante") {}
+    };
 
     bool local_antes_simple;
 

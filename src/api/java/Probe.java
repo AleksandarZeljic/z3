@@ -22,11 +22,10 @@ package com.microsoft.z3;
  * may be used to decide which solver and/or preprocessing step will be used.
  * The complete list of probes may be obtained using the procedures
  * {@code Context.NumProbes} and {@code Context.ProbeNames}. It may
- * also be obtained using the command {@code (help-tactics)} in the SMT 2.0
+ * also be obtained using the command {@code (help-tactic)} in the SMT 2.0
  * front-end.
  **/
-public class Probe extends Z3Object
-{
+public class Probe extends Z3Object {
     /**
      * Execute the probe over the goal.
      * 
@@ -46,20 +45,17 @@ public class Probe extends Z3Object
         super(ctx, obj);
     }
 
-    Probe(Context ctx, String name)
-    {
+    Probe(Context ctx, String name) {
         super(ctx, Native.mkProbe(ctx.nCtx(), name));
     }
 
-    void incRef(long o)
-    {
-        getContext().getProbeDRQ().incAndClear(getContext(), o);
-        super.incRef(o);
+    @Override
+    void incRef() {
+        Native.probeIncRef(getContext().nCtx(), getNativeObject());
     }
 
-    void decRef(long o)
-    {
-        getContext().getProbeDRQ().add(o);
-        super.decRef(o);
+    @Override
+    void addToReferenceQueue() {
+        getContext().getProbeDRQ().storeReference(getContext(), this);
     }
 }

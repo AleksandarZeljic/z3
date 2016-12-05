@@ -43,7 +43,6 @@ Revision History:
 #include"dl_mk_similarity_compressor.h"
 #include"dl_mk_unbound_compressor.h"
 #include"dl_mk_subsumption_checker.h"
-#include"dl_mk_partial_equiv.h"
 #include"dl_mk_coi_filter.h"
 #include"dl_mk_filter_rules.h"
 #include"dl_mk_rule_inliner.h"
@@ -108,7 +107,6 @@ namespace datalog {
         rm.register_plugin(alloc(sparse_table_plugin, rm));
         rm.register_plugin(alloc(hashtable_table_plugin, rm));
         rm.register_plugin(alloc(bitvector_table_plugin, rm));
-        rm.register_plugin(alloc(equivalence_table_plugin, rm));
         rm.register_plugin(lazy_table_plugin::mk_sparse(rm));
 
         // register plugins for builtin relations
@@ -151,6 +149,7 @@ namespace datalog {
             m_context.ensure_closed();
             transform_rules();
             if (m_context.canceled()) {
+                TRACE("dl", tout << "canceled\n";);
                 result = l_undef;
                 break;
             }
@@ -191,6 +190,7 @@ namespace datalog {
             IF_VERBOSE(10, m_ectx.report_big_relations(1000, verbose_stream()););
 
             if (m_context.canceled()) {
+                TRACE("dl", tout << "canceled\n";);
                 result = l_undef;
                 break;
             }
@@ -206,6 +206,7 @@ namespace datalog {
             }
             if (timeout_after_this_round) {
                 m_context.set_status(TIMEOUT);
+                TRACE("dl", tout << "timeout\n";);
                 result = l_undef;
                 break;
             }
@@ -272,6 +273,7 @@ namespace datalog {
             if (some_non_empty) {
                 m_answer = mk_and(m, ans.size(), ans.c_ptr());
                 if (is_approx) {
+                    TRACE("dl", tout << "approx\n";);
                     res = l_undef;
                     m_context.set_status(APPROX);
                 }
@@ -286,32 +288,24 @@ namespace datalog {
             m_answer = m.mk_false();
             break;
         case l_undef:
+            TRACE("dl", tout << "saturation in undef\n";);
             break;
         }
         return res;
     }
 
-#define _MIN_DONE_ 1
-
     void rel_context::transform_rules() {
         rule_transformer transf(m_context);
-#ifdef _MIN_DONE_
         transf.register_plugin(alloc(mk_coi_filter, m_context));
-#endif
         transf.register_plugin(alloc(mk_filter_rules, m_context));        
         transf.register_plugin(alloc(mk_simple_joins, m_context));
         if (m_context.unbound_compressor()) {
             transf.register_plugin(alloc(mk_unbound_compressor, m_context));
         }
-#ifdef _MIN_DONE_
         if (m_context.similarity_compressor()) {
             transf.register_plugin(alloc(mk_similarity_compressor, m_context)); 
         }
-#endif
-        transf.register_plugin(alloc(mk_partial_equivalence_transformer, m_context));
-#ifdef _MIN_DONE_
         transf.register_plugin(alloc(mk_rule_inliner, m_context));
-#endif
         transf.register_plugin(alloc(mk_interp_tail_simplifier, m_context));
         transf.register_plugin(alloc(mk_separate_negated_tails, m_context));
 
@@ -375,6 +369,7 @@ namespace datalog {
                 m_last_result_relation->to_formula(m_answer);
                 if (!m_last_result_relation->is_precise()) {
                     m_context.set_status(APPROX);
+                    TRACE("dl", tout << "approx\n";);
                     res = l_undef;
                 }
             }
@@ -520,9 +515,6 @@ namespace datalog {
         get_rmanager().set_predicate_kind(pred, target_kind);
     }
 
-    void rel_context::set_cancel(bool f) {
-        get_rmanager().set_cancel(f);        
-    }
 
     void rel_context::setup_default_relation() {
         if (m_context.default_relation() == symbol("doc")) {

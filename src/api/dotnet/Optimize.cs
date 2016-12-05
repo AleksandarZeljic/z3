@@ -67,6 +67,38 @@ namespace Microsoft.Z3
         /// </summary>        
         public void Assert(params BoolExpr[] constraints)
         {
+            AddConstraints(constraints);
+        }
+
+        /// <summary>
+        /// Assert a constraint (or multiple) into the optimize solver.
+        /// </summary>        
+        public void Assert(IEnumerable<BoolExpr> constraints)
+        {
+            AddConstraints(constraints);
+        }
+
+        /// <summary>
+        /// Alias for Assert.
+        /// </summary>        
+        public void Add(params BoolExpr[] constraints)
+        {
+            AddConstraints(constraints);
+        }
+
+        /// <summary>
+        /// Alias for Assert.
+        /// </summary>        
+        public void Add(IEnumerable<BoolExpr> constraints)
+        {
+            AddConstraints(constraints);
+        }
+
+        /// <summary>
+        /// Assert a constraint (or multiple) into the optimize solver.
+        /// </summary>   
+        private void AddConstraints(IEnumerable<BoolExpr> constraints)
+        {
             Contract.Requires(constraints != null);
             Contract.Requires(Contract.ForAll(constraints, c => c != null));
 
@@ -76,15 +108,6 @@ namespace Microsoft.Z3
                 Native.Z3_optimize_assert(Context.nCtx, NativeObject, a.NativeObject);
             }
         }
-
-        /// <summary>
-        /// Alias for Assert.
-        /// </summary>        
-        public void Add(params BoolExpr[] constraints)
-        {
-            Assert(constraints);
-        }
-
         /// <summary>
         /// Handle to objectives returned by objective functions.
         /// </summary>
@@ -235,10 +258,13 @@ namespace Microsoft.Z3
 	/// <summary>
 	/// Return a string the describes why the last to check returned unknown
 	/// </summary>	
-    	public String getReasonUnknown()
+    	public String ReasonUnknown
     	{
-            Contract.Ensures(Contract.Result<string>() != null);
-            return Native.Z3_optimize_get_reason_unknown(Context.nCtx, NativeObject);
+            get 
+            {
+                Contract.Ensures(Contract.Result<string>() != null);
+                return Native.Z3_optimize_get_reason_unknown(Context.nCtx, NativeObject);
+            }
     	}
 
 
@@ -249,6 +275,52 @@ namespace Microsoft.Z3
         {
             return Native.Z3_optimize_to_string(Context.nCtx, NativeObject);
         }
+
+        /// <summary>
+        /// Parse an SMT-LIB2 file with optimization objectives and constraints.
+        /// The parsed constraints and objectives are added to the optimization context.
+        /// </summary>                
+        public void FromFile(string file)
+        {
+            Native.Z3_optimize_from_file(Context.nCtx, NativeObject, file);
+        }
+
+        /// <summary>
+        /// Similar to FromFile. Instead it takes as argument a string.
+        /// </summary>
+        public void FromString(string s)
+        {
+            Native.Z3_optimize_from_string(Context.nCtx, NativeObject, s);
+        }
+
+        /// <summary>
+        /// The set of asserted formulas.
+        /// </summary>
+        public BoolExpr[] Assertions
+        {
+            get
+            {
+                Contract.Ensures(Contract.Result<BoolExpr[]>() != null);
+
+                ASTVector assertions = new ASTVector(Context, Native.Z3_optimize_get_assertions(Context.nCtx, NativeObject));
+                return assertions.ToBoolExprArray();
+            }
+        }
+
+        /// <summary>
+        /// The set of asserted formulas.
+        /// </summary>
+        public Expr[] Objectives
+        {
+            get
+            {
+                Contract.Ensures(Contract.Result<Expr[]>() != null);
+
+                ASTVector objectives = new ASTVector(Context, Native.Z3_optimize_get_objectives(Context.nCtx, NativeObject));
+                return objectives.ToExprArray();
+            }
+        }
+
 
         /// <summary>
         /// Optimize statistics.

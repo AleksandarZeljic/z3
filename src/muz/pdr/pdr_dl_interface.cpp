@@ -145,6 +145,12 @@ lbool dl_interface::query(expr * query) {
 
     query_pred = rules.get_output_predicate();
 
+    TRACE("pdr",
+          tout << "rules:\n";
+          m_ctx.display_rules(tout);
+          m_ctx.display_smt2(0, 0, tout);
+          );
+
     IF_VERBOSE(2, m_ctx.display_rules(verbose_stream()););
     m_pdr_rules.replace_rules(rules);
     m_pdr_rules.close();
@@ -152,6 +158,7 @@ lbool dl_interface::query(expr * query) {
     m_ctx.reopen();
     m_ctx.replace_rules(old_rules);
     
+
     scoped_restore_proof _sc(m); // update_rules may overwrite the proof mode.
 
     m_context->set_proof_converter(m_ctx.get_proof_converter());
@@ -206,13 +213,7 @@ expr_ref dl_interface::get_answer() {
     return m_context->get_answer();
 }
 
-void dl_interface::cancel() {
-    m_context->cancel();
-}
 
-void dl_interface::cleanup() {
-    m_context->cleanup();
-}
 
 void dl_interface::updt_params() {
     dealloc(m_context);

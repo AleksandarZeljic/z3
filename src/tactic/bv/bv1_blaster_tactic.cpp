@@ -377,9 +377,6 @@ class bv1_blaster_tactic : public tactic {
         
         ast_manager & m() const { return m_rw.m(); }
         
-        void set_cancel(bool f) {
-            m_rw.set_cancel(f);
-        }
         
         void operator()(goal_ref const & g, 
                         goal_ref_buffer & result, 
@@ -467,10 +464,7 @@ public:
     
     virtual void cleanup() {
         imp * d = alloc(imp, m_imp->m(), m_params);
-        #pragma omp critical (tactic_cancel)
-        {
-            std::swap(d, m_imp);
-        }
+        std::swap(d, m_imp);        
         dealloc(d);
     }
     
@@ -478,11 +472,6 @@ public:
         return m_imp->get_num_steps();
     }
     
-protected:
-    virtual void set_cancel(bool f) {
-        if (m_imp)
-            m_imp->set_cancel(f);
-    }
 };
 
 tactic * mk_bv1_blaster_tactic(ast_manager & m, params_ref const & p) {
@@ -492,8 +481,6 @@ tactic * mk_bv1_blaster_tactic(ast_manager & m, params_ref const & p) {
 class is_qfbv_eq_probe : public probe {
 public:
     virtual result operator()(goal const & g) {
-        bv_rewriter rw(g.m());
-        if (!rw.hi_div0()) return false;
         bv1_blaster_tactic t(g.m());
         return t.is_target(g);
 

@@ -22,19 +22,7 @@ Notes:
 #include"stopwatch.h"
 #include"model_v2_pp.h"
 
-void tactic::cancel() {
-    #pragma omp critical (tactic_cancel)
-    {
-        set_cancel(true);
-    }
-}
 
-void tactic::reset_cancel() {
-    #pragma omp critical (tactic_cancel)
-    {
-        set_cancel(false);
-    }
-}
 
 struct tactic_report::imp {
     char const *    m_id;
@@ -120,7 +108,7 @@ class report_verbose_tactic : public skip_tactic {
     unsigned     m_lvl;
 public:
     report_verbose_tactic(char const * msg, unsigned lvl) : m_msg(msg), m_lvl(lvl) {}
-    
+
     virtual void operator()(goal_ref const & in, 
                             goal_ref_buffer & result, 
                             model_converter_ref & mc, 

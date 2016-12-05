@@ -21,15 +21,14 @@ package com.microsoft.z3;
 /**
  * A ParameterSet represents a configuration in the form of Symbol/value pairs.
  **/
-public class Params extends Z3Object
-{
+public class Params extends Z3Object {
     /**
      * Adds a parameter setting.
      **/
     public void add(Symbol name, boolean value)
     {
         Native.paramsSetBool(getContext().nCtx(), getNativeObject(),
-                name.getNativeObject(), (value) ? true : false);
+                name.getNativeObject(), (value));
     }
 
     /**
@@ -112,15 +111,10 @@ public class Params extends Z3Object
     /**
      * A string representation of the parameter set.
      **/
+    @Override
     public String toString()
     {
-        try
-        {
-            return Native.paramsToString(getContext().nCtx(), getNativeObject());
-        } catch (Z3Exception e)
-        {
-            return "Z3Exception: " + e.getMessage();
-        }
+        return Native.paramsToString(getContext().nCtx(), getNativeObject());
     }
 
     Params(Context ctx)
@@ -128,15 +122,14 @@ public class Params extends Z3Object
         super(ctx, Native.mkParams(ctx.nCtx()));
     }
 
-    void incRef(long o)
-    {
-        getContext().getParamsDRQ().incAndClear(getContext(), o);
-        super.incRef(o);
+
+    @Override
+    void incRef() {
+        Native.paramsIncRef(getContext().nCtx(), getNativeObject());
     }
 
-    void decRef(long o)
-    {
-        getContext().getParamsDRQ().add(o);
-        super.decRef(o);
+    @Override
+    void addToReferenceQueue() {
+        getContext().getParamsDRQ().storeReference(getContext(), this);
     }
 }

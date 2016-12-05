@@ -249,6 +249,7 @@ void grobner::update_order() {
 }
 
 bool grobner::var_lt::operator()(expr * v1, expr * v2) const {
+    if (v1 == v2) return false;
     int w1 = 0;
     int w2 = 0;
     m_var2weight.find(v1, w1);
@@ -268,6 +269,8 @@ bool grobner::monomial_lt::operator()(monomial * m1, monomial * m2) const {
     for (; it1 != end1; ++it1, ++it2) {
         expr * v1 = *it1;
         expr * v2 = *it2;
+        if (v1 == v2)
+            continue;
         if (m_var_lt(v1, v2))
             return true;
         if (v1 != v2)
@@ -443,6 +446,7 @@ void grobner::merge_monomials(ptr_vector<monomial> & monomials) {
     SASSERT(&m_del_monomials != &monomials);
     ptr_vector<monomial>& to_delete = m_del_monomials;
     to_delete.reset();
+    m_manager.limit().inc(sz);
     for (unsigned i = 1; i < sz; ++i) {
         monomial * m1 = monomials[j];
         monomial * m2 = monomials[i];
@@ -670,7 +674,7 @@ grobner::equation * grobner::simplify(equation const * source, equation * target
             simplify(target);
         }
     }
-    while (simplified);
+    while (simplified && !m_manager.canceled());
     TRACE("grobner", tout << "result: "; display_equation(tout, *target););
     return result ? target : 0;
 }
@@ -697,7 +701,10 @@ grobner::equation * grobner::simplify_using_processed(equation * eq) {
                 simplified = true;
                 eq         = new_eq;
             }
-        }
+            if (m_manager.canceled()) {
+                return 0;
+            }
+        }        
     }
     while (simplified);
     TRACE("grobner", tout << "simplification result: "; display_equation(tout, *eq););
@@ -749,13 +756,13 @@ grobner::equation * grobner::pick_next() {
 /**
    \brief Use the given equation to simplify processed terms.
 */
-void grobner::simplify_processed(equation * eq) {
+bool grobner::simplify_processed(equation * eq) {
     ptr_buffer<equation> to_insert;
     ptr_buffer<equation> to_remove;
     ptr_buffer<equation> to_delete;
     equation_set::iterator it  = m_processed.begin();
     equation_set::iterator end = m_processed.end();
-    for (; it != end; ++it) {
+    for (; it != end && !m_manager.canceled(); ++it) {
         equation * curr        = *it;
         m_changed_leading_term = false;
         // if the leading term is simplified, then the equation has to be moved to m_to_process
@@ -795,6 +802,7 @@ void grobner::simplify_processed(equation * eq) {
     end1 = to_delete.end();
     for (; it1 != end1; ++it1)
         del_equation(*it1);
+    return !m_manager.canceled();
 }
 
 /**
@@ -923,30 +931,40 @@ void grobner::superpose(equation * eq) {
     }
 }
 
-bool grobner::compute_basis(unsigned threshold) {
+void grobner::compute_basis_init() {
     m_stats.m_compute_basis++;
     m_num_new_equations = 0;
-    while (m_num_new_equations < threshold) {
-        equation * eq = pick_next();
-        if (!eq)
-            return true;
-        m_stats.m_num_processed++;
+}
+
+bool grobner::compute_basis_step() {
+    equation * eq = pick_next();
+    if (!eq)
+        return true;
+    m_stats.m_num_processed++;
 #ifdef PROFILE_GB
-        if (m_stats.m_num_processed % 100 == 0) {
-            verbose_stream() << "[grobner] " << m_processed.size() << " " << m_to_process.size() << "\n";
-        }
+    if (m_stats.m_num_processed % 100 == 0) {
+        verbose_stream() << "[grobner] " << m_processed.size() << " " << m_to_process.size() << "\n";
+    }
 #endif
-        equation * new_eq = simplify_using_processed(eq);
-        if (new_eq != 0 && eq != new_eq) {
-            // equation was updated using non destructive updates
-            m_equations_to_unfreeze.push_back(eq);
-            eq = new_eq;
-        }
-        simplify_processed(eq);
-        superpose(eq);
-        m_processed.insert(eq);
-        simplify_to_process(eq);
-        TRACE("grobner", tout << "end of iteration:\n"; display(tout););
+    equation * new_eq = simplify_using_processed(eq);
+    if (new_eq != 0 && eq != new_eq) {
+        // equation was updated using non destructive updates
+        m_equations_to_unfreeze.push_back(eq);
+        eq = new_eq;
+    }
+    if (m_manager.canceled()) return false;
+    if (!simplify_processed(eq)) return false;
+    superpose(eq);
+    m_processed.insert(eq);
+    simplify_to_process(eq);
+    TRACE("grobner", tout << "end of iteration:\n"; display(tout););
+    return false;
+}
+
+bool grobner::compute_basis(unsigned threshold) {
+    compute_basis_init();
+    while (m_num_new_equations < threshold && !m_manager.canceled()) {
+        if (compute_basis_step()) return true;
     }
     return false;
 }

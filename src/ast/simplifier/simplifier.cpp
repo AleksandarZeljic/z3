@@ -63,6 +63,7 @@ void simplifier::operator()(expr * s, expr_ref & r, proof_ref & p) {
     m_need_reset = true;
     reinitialize();
     expr  * s_orig = s;
+    (void)s_orig;
     expr  * old_s;
     expr  * result;
     proof * result_proof;
@@ -127,11 +128,11 @@ bool simplifier::get_subst(expr * n, expr_ref & r, proof_ref & p) {
     return false;
 }
 
-void simplifier::reduce_core(expr * n) {
-    if (!is_cached(n)) {
+void simplifier::reduce_core(expr * n1) {
+    if (!is_cached(n1)) {
         // We do not assume m_todo is empty... So, we store the current size of the todo-stack.
         unsigned sz = m_todo.size();
-        m_todo.push_back(n);
+        m_todo.push_back(n1);
         while (m_todo.size() != sz) {
             expr * n = m_todo.back();
             if (is_cached(n))
@@ -141,6 +142,10 @@ void simplifier::reduce_core(expr * n) {
                 // simplification step to it.
                 m_todo.pop_back();
                 reduce1(n);
+            }
+            if (m.canceled()) {
+                cache_result(n1, n1, 0);
+                break;
             }
         }
     }
@@ -469,6 +474,7 @@ void simplifier::mk_app(func_decl * decl, unsigned num_args, expr * const * args
         //dump_rewrite_lemma(decl, num_args, args, result.get());
         return;
     }
+	
     result = m.mk_app(decl, num_args, args);
 }
 

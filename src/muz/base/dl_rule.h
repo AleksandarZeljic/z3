@@ -32,6 +32,7 @@ Revision History:
 #include"qe_lite.h"
 #include"var_subst.h"
 #include"datatype_decl_plugin.h"
+#include"label_rewriter.h"
 
 namespace datalog {
 
@@ -102,16 +103,6 @@ namespace datalog {
     */
     class rule_manager
     {
-        class remove_label_cfg : public default_rewriter_cfg {
-            family_id m_label_fid;
-        public:        
-            remove_label_cfg(ast_manager& m): m_label_fid(m.get_label_family_id()) {}
-            virtual ~remove_label_cfg();
-            
-            br_status reduce_app(func_decl * f, unsigned num, expr * const * args, expr_ref & result, 
-                                 proof_ref & result_pr);
-        };
-    
         ast_manager&         m;
         context&             m_ctx;
         rule_counter         m_counter;
@@ -124,8 +115,7 @@ namespace datalog {
         svector<bool>        m_neg;
         hnf                  m_hnf;
         qe_lite              m_qe;
-        remove_label_cfg               m_cfg;
-        rewriter_tpl<remove_label_cfg> m_rwr;
+        label_rewriter       m_rwr;
         mutable uninterpreted_function_finder_proc m_ufproc;
         mutable quantifier_finder_proc m_qproc;
         mutable expr_sparse_mark       m_visited;
@@ -345,13 +335,6 @@ namespace datalog {
         func_decl* get_decl(unsigned i) const { SASSERT(i < get_uninterpreted_tail_size()); return get_tail(i)->get_decl(); }
 
         bool is_neg_tail(unsigned i) const { SASSERT(i < m_tail_size); return GET_TAG(m_tail[i]) == 1; }
-
-        /**
-           A predicate P(Xj) can be annotated by adding an interpreted predicate of the form ((_ min P N) ...)
-           where N is the column number that should be used for the min aggregation function.
-           Such an interpreted predicate is an example for which this function returns true.
-        */
-        bool is_min_tail(unsigned i) const { return dl_decl_plugin::is_aggregate(get_tail(i)->get_decl()); }
 
         /**
         Check whether predicate p is in the interpreted tail.

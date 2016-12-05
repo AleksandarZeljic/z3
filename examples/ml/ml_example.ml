@@ -190,9 +190,10 @@ let basic_tests ( ctx : context ) =
   (* Error handling test. *)
   try (
     let i = Integer.mk_numeral_s ctx "1/2" in
-    raise (TestFailedException (numeral_to_string i)) (* unreachable *)
+    Printf.printf "%s\n" (Expr.to_string i) ;
+    raise (TestFailedException "check")
   )
-  with Z3native.Exception(_) -> (
+  with Z3.Error(_) -> (
     Printf.printf "Exception caught, OK.\n" 
   )
 
@@ -287,16 +288,15 @@ let fpa_example ( ctx : context ) =
   (* ((_ to_fp 11 53) #x401c000000000000)) *)
   (* ((_ to_fp 11 53) RTZ 1.75 2))) *)
   (* ((_ to_fp 11 53) RTZ 7.0))) *)
-  let c1 = (mk_fp ctx 
- 			  (mk_numeral_string ctx "0" (BitVector.mk_sort ctx 1))
- 			  (mk_numeral_string ctx "3377699720527872" (BitVector.mk_sort ctx 52))			  
-			  (mk_numeral_string ctx "1025" (BitVector.mk_sort ctx 11))) in
+  let c1 = (mk_fp ctx (mk_numeral_string ctx "0" (BitVector.mk_sort ctx 1))
+                      (mk_numeral_string ctx "1025" (BitVector.mk_sort ctx 11))
+ 		      (mk_numeral_string ctx "3377699720527872" (BitVector.mk_sort ctx 52))) in
   let c2 = (mk_to_fp_bv ctx
 			  (mk_numeral_string ctx "4619567317775286272" (BitVector.mk_sort ctx 64))
 			  (mk_sort ctx 11 53)) in
   let c3 = (mk_to_fp_int_real ctx 
 			  (RoundingMode.mk_rtz ctx)
-              (mk_numeral_string ctx "2" (Integer.mk_sort ctx))
+                          (mk_numeral_string ctx "2" (Integer.mk_sort ctx))
 			  (mk_numeral_string ctx "1.75" (Real.mk_sort ctx))
 			  (FloatingPoint.mk_sort ctx 11 53)) in
   let c4 = (mk_to_fp_real ctx (RoundingMode.mk_rtz ctx)
@@ -323,6 +323,7 @@ let _ =
     else
       (
 	Printf.printf "Running Z3 version %s\n" Version.to_string ;
+	Printf.printf "Z3 full version string: %s\n" Version.full_version ;
 	let cfg = [("model", "true"); ("proof", "false")] in
 	let ctx = (mk_context cfg) in
 	let is = (Symbol.mk_int ctx 42) in
@@ -343,7 +344,7 @@ let _ =
       );
     Printf.printf "Exiting.\n" ;
     exit 0
-  ) with Z3native.Exception(msg) -> (
+  ) with Error(msg) -> (
     Printf.printf "Z3 EXCEPTION: %s\n" msg ;
     exit 1
   )    

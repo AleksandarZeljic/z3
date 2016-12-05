@@ -53,26 +53,26 @@ struct aig {
     aig() {}
 };
 
-inline bool is_true(aig_lit const & r) { return !r.is_inverted() && r.ptr_non_inverted()->m_id == 0; }
-inline bool is_false(aig_lit const & r) { return r.is_inverted() && r.ptr()->m_id == 0; }
-inline bool is_var(aig * n) { return n->m_children[0].is_null(); }
-inline bool is_var(aig_lit const & n) { return is_var(n.ptr()); }
-inline unsigned id(aig_lit const & n) { return n.ptr()->m_id; }
-inline unsigned ref_count(aig_lit const & n) { return n.ptr()->m_ref_count; }
-inline aig_lit left(aig * n) { return n->m_children[0]; }
-inline aig_lit right(aig * n) { return n->m_children[1]; }
-inline aig_lit left(aig_lit const & n) { return left(n.ptr()); }
-inline aig_lit right(aig_lit const & n) { return right(n.ptr()); }
+static bool is_true(aig_lit const & r) { return !r.is_inverted() && r.ptr_non_inverted()->m_id == 0; }
+static bool is_false(aig_lit const & r) { return r.is_inverted() && r.ptr()->m_id == 0; }
+static bool is_var(aig * n) { return n->m_children[0].is_null(); }
+static bool is_var(aig_lit const & n) { return is_var(n.ptr()); }
+static unsigned id(aig_lit const & n) { return n.ptr()->m_id; }
+static unsigned ref_count(aig_lit const & n) { return n.ptr()->m_ref_count; }
+static aig_lit left(aig * n) { return n->m_children[0]; }
+static aig_lit right(aig * n) { return n->m_children[1]; }
+static aig_lit left(aig_lit const & n) { return left(n.ptr()); }
+static aig_lit right(aig_lit const & n) { return right(n.ptr()); }
 
 inline unsigned to_idx(aig * p) { SASSERT(!is_var(p)); return p->m_id - FIRST_NODE_ID; }
 
-void unmark(unsigned sz, aig_lit const * ns) {
+static void unmark(unsigned sz, aig_lit const * ns) {
     for (unsigned i = 0; i < sz; i++) {
         ns[i].ptr()->m_mark = false;
     }
 }
 
-void unmark(unsigned sz, aig * const * ns) {
+static void unmark(unsigned sz, aig * const * ns) {
     for (unsigned i = 0; i < sz; i++) {
         ns[i]->m_mark = false;
     }
@@ -119,7 +119,6 @@ struct aig_manager::imp {
     aig_lit                  m_false;
     bool                     m_default_gate_encoding;
     unsigned long long       m_max_memory;
-    volatile bool            m_cancel;
 
     void dec_ref_core(aig * n) {
         SASSERT(n->m_ref_count > 0);
@@ -131,8 +130,8 @@ struct aig_manager::imp {
     void checkpoint() {
         if (memory::get_allocation_size() > m_max_memory)
             throw aig_exception(TACTIC_MAX_MEMORY_MSG);
-        if (m_cancel)
-            throw aig_exception(TACTIC_CANCELED_MSG);
+        if (m().canceled())
+            throw aig_exception(m().limit().get_cancel_msg());
         cooperate("aig");
     }
 
@@ -1309,8 +1308,7 @@ public:
         m_num_aigs(0),
         m_var2exprs(m),
         m_allocator("aig"),
-        m_true(mk_var(m.mk_true())),
-        m_cancel(false) {
+        m_true(mk_var(m.mk_true())) {
         SASSERT(is_true(m_true));
         m_false = m_true;
         m_false.invert();
@@ -1328,7 +1326,6 @@ public:
 
     ast_manager & m() const { return m_var2exprs.get_manager(); }
 
-    void set_cancel(bool f) { m_cancel = f; }
 
     void inc_ref(aig * n) { n->m_ref_count++; }
     void inc_ref(aig_lit const & r) { inc_ref(r.ptr()); }
@@ -1754,8 +1751,5 @@ unsigned aig_manager::get_num_aigs() const {
     return m_imp->get_num_aigs();
 }
 
-void aig_manager::set_cancel(bool f) {
-    m_imp->set_cancel(f);
-}
 
 

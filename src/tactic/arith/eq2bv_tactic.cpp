@@ -139,9 +139,6 @@ public:
     virtual ~eq2bv_tactic() {
     }
         
-    void set_cancel(bool f) {
-        m_rw.set_cancel(f);
-    }
         
     void updt_params(params_ref const & p) {
     }
@@ -194,15 +191,18 @@ public:
             expr* c = it->m_key;
             bool strict;
             rational r;
-            if (m_bounds.has_lower(c, r, strict)) {
+            expr_ref fml(m);
+            if (m_bounds.has_lower(c, r, strict) && !r.is_neg()) {
                 SASSERT(!strict);
                 expr* d = m_fd.find(c);
-                g->assert_expr(bv.mk_ule(bv.mk_numeral(r, m.get_sort(d)), d), m_bounds.lower_dep(c));
+                fml = bv.mk_ule(bv.mk_numeral(r, m.get_sort(d)), d);
+                g->assert_expr(fml, m_bounds.lower_dep(c));
             }
-            if (m_bounds.has_upper(c, r, strict)) {
+            if (m_bounds.has_upper(c, r, strict) && !r.is_neg()) {
                 SASSERT(!strict);
                 expr* d = m_fd.find(c);
-                g->assert_expr(bv.mk_ule(d, bv.mk_numeral(r, m.get_sort(d))), m_bounds.upper_dep(c));
+                fml = bv.mk_ule(d, bv.mk_numeral(r, m.get_sort(d)));
+                g->assert_expr(fml, m_bounds.upper_dep(c));
             }
         }        
         g->inc_depth();
@@ -248,8 +248,9 @@ public:
             else {
                 ++it->m_value; 
             }
-            unsigned p = next_power_of_two(it->m_value);
+            unsigned p = next_power_of_two(it->m_value);            
             if (p <= 1) p = 2;
+            if (it->m_value == p) p *= 2;
             unsigned n = log2(p);
             app* z = m.mk_fresh_const("z", bv.mk_sort(n));
             m_trail.push_back(z);
@@ -258,11 +259,21 @@ public:
         }
     }
 
+    bool is_var_const_pair(expr* e, expr* c, unsigned& k) {
+        rational r;
+        if (is_uninterp_const(e) && a.is_numeral(c, r) && r.is_unsigned() && !m_nonfd.is_marked(e)) {
+            k = r.get_unsigned();
+            return true;
+        }
+        else {
+            return false;
+        }
+    }
+
     bool is_upper(expr* f) {
         expr* e1, *e2;
-        rational r;
-        if ((a.is_le(f, e1, e2) || a.is_ge(f, e2, e1)) && 
-            is_uninterp_const(e1) && a.is_numeral(e2, r) && r.is_unsigned() && !m_nonfd.is_marked(e1)) {
+        unsigned k;
+        if ((a.is_le(f, e1, e2) || a.is_ge(f, e2, e1)) && is_var_const_pair(e1, e2, k)) {
             SASSERT(m_bounds.has_upper(e1));
             return true;
         } 
@@ -271,9 +282,8 @@ public:
 
     bool is_lower(expr* f) {
         expr* e1, *e2;
-        rational r;
-        if ((a.is_le(f, e1, e2) || a.is_ge(f, e2, e1)) && 
-            is_uninterp_const(e2) && a.is_numeral(e1, r) && r.is_unsigned() && !m_nonfd.is_marked(e2)) {
+        unsigned k;
+        if ((a.is_le(f, e1, e2) || a.is_ge(f, e2, e1)) && is_var_const_pair(e2, e1, k)) {
             SASSERT(m_bounds.has_lower(e2));
             return true;
         } 
@@ -283,7 +293,6 @@ public:
     bool is_bound(expr* f) {
         return is_lower(f) || is_upper(f);
     }
-
 
     void collect_fd(expr* f) {
         if (is_bound(f)) return;
@@ -297,14 +306,16 @@ public:
             m_nonfd.mark(f, true);
             expr* e1, *e2;
             if (m.is_eq(f, e1, e2)) {
-                if (is_fd(e1, e2)) {
+                if (is_fd(e1, e2) || is_fd(e2, e1)) {
                     continue;
-                }
-                if (is_fd(e2, e1)) {
-                    continue;
-                }
+                }            
             }
-            m_todo.append(to_app(f)->get_num_args(), to_app(f)->get_args());
+            if (is_app(f)) {
+                m_todo.append(to_app(f)->get_num_args(), to_app(f)->get_args());
+            }
+            else if (is_quantifier(f)) {
+                m_todo.push_back(to_quantifier(f)->get_expr());
+            }
         }
     }
 

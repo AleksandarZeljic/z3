@@ -66,7 +66,7 @@ enum case_split_strategy {
     CS_ACTIVITY_WITH_CACHE, // case split based on activity and cache the activity
     CS_RELEVANCY, // case split based on relevancy
     CS_RELEVANCY_ACTIVITY, // case split based on relevancy and activity
-    CS_RELEVANCY_GOAL, // based on relevancy and the current goal
+    CS_RELEVANCY_GOAL // based on relevancy and the current goal
 };
 
 struct smt_params : public preprocessor_params, 
@@ -160,7 +160,7 @@ struct smt_params : public preprocessor_params,
     //
     // -----------------------------------
     bool              m_smtlib_dump_lemmas;
-    std::string       m_smtlib_logic;
+    symbol            m_logic;
     
     // -----------------------------------
     //
@@ -206,6 +206,7 @@ struct smt_params : public preprocessor_params,
     bool                m_user_theory_preprocess_axioms;
     bool                m_user_theory_persist_axioms;
     unsigned            m_timeout;
+    unsigned            m_rlimit;
     bool                m_at_labels_cex; // only use labels which contains the @ symbol when building multiple counterexamples.
     bool                m_check_at_labels; // check that @ labels are inserted to generate unique counter-examples.    
     bool                m_dump_goal_as_smt;
@@ -259,7 +260,7 @@ struct smt_params : public preprocessor_params,
         m_old_clause_relevancy(6),
         m_inv_clause_decay(1),
         m_smtlib_dump_lemmas(false),
-        m_smtlib_logic("AUFLIA"),
+        m_logic(symbol::null),
         m_profile_res_sub(false),
         m_display_bool_var2expr(false),
         m_display_ll_bool_var2expr(false),
@@ -275,6 +276,7 @@ struct smt_params : public preprocessor_params,
         m_user_theory_preprocess_axioms(false),
         m_user_theory_persist_axioms(false),
         m_timeout(0),
+        m_rlimit(0),
         m_at_labels_cex(false),
         m_check_at_labels(false),
         m_dump_goal_as_smt(false),
@@ -287,6 +289,8 @@ struct smt_params : public preprocessor_params,
     void updt_params(params_ref const & p);
 
     void updt_params(context_params const & p);
+
+    void display(std::ostream & out) const;
 };
 
 #endif /* SMT_PARAMS_H_ */

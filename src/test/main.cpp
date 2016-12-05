@@ -186,6 +186,7 @@ int main(int argc, char ** argv) {
     TST(smt_context);
     TST(theory_dl);
     TST(model_retrieval);
+    TST(model_based_opt);
     TST(factor_rewriter);
     TST(smt2print_parse);
     TST(substitution);
@@ -226,6 +227,9 @@ int main(int argc, char ** argv) {
     TST(sat_user_scope);
     TST(pdr);
     TST_ARGV(ddnf);
+    TST(model_evaluator);
+    TST(get_consequences);
+    TST(pb2bv);
     //TST_ARGV(hs);
 }
 

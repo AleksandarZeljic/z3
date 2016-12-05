@@ -25,59 +25,24 @@ Revision History:
 #include"well_sorted.h"
 #include"used_symbols.h"
 #include"model_v2_pp.h"
-#include"basic_simplifier_plugin.h"
 
-proto_model::proto_model(ast_manager & m, simplifier & s, params_ref const & p):
+proto_model::proto_model(ast_manager & m, params_ref const & p):
     model_core(m),
-    m_asts(m),
-    m_simplifier(s),
-    m_afid(m.mk_family_id(symbol("array"))) {
+    m_afid(m.mk_family_id(symbol("array"))),
+    m_eval(*this),
+    m_rewrite(m) {
     register_factory(alloc(basic_factory, m));
     m_user_sort_factory = alloc(user_sort_factory, m);
     register_factory(m_user_sort_factory);
-    
+
     m_model_partial = model_params(p).partial();
 }
 
-void proto_model::reset_finterp() {
-     decl2finterp::iterator it  = m_finterp.begin();
-     decl2finterp::iterator end = m_finterp.end();
-     for (; it != end; ++it) {
-         dealloc(it->m_value);
-     }
-}
 
-proto_model::~proto_model() {
-    reset_finterp();
-}
 
-void proto_model::register_decl(func_decl * d, expr * v) {
-    SASSERT(d->get_arity() == 0);
-    if (m_interp.contains(d)) {
-        DEBUG_CODE({
-            expr * old_v = 0;
-            m_interp.find(d, old_v);
-            SASSERT(old_v == v);
-        });
-        return;
-    }
-    SASSERT(!m_interp.contains(d));
-    m_decls.push_back(d);
-    m_asts.push_back(d);
-    m_asts.push_back(v);
-    m_interp.insert(d, v);
-    m_const_decls.push_back(d);
-}
-
-void proto_model::register_decl(func_decl * d, func_interp * fi, bool aux) {
-    SASSERT(d->get_arity() > 0);
-    SASSERT(!m_finterp.contains(d));
-    m_decls.push_back(d);
-    m_asts.push_back(d);
-    m_finterp.insert(d, fi);
-    m_func_decls.push_back(d);
-    if (aux)
-        m_aux_decls.insert(d);
+void proto_model::register_aux_decl(func_decl * d, func_interp * fi) {
+    model_core::register_decl(d, fi);
+    m_aux_decls.insert(d);
 }
 
 /**
@@ -118,244 +83,44 @@ expr * proto_model::mk_some_interp_for(func_decl * d) {
     return r;
 }
 
-// Auxiliary function for computing fi(args[0], ..., args[fi.get_arity() - 1]).
-// The result is stored in result.
-// Return true if succeeded, and false otherwise.
-// It uses the simplifier s during the computation.
-bool eval(func_interp & fi, simplifier & s, expr * const * args, expr_ref & result) {
-    bool actuals_are_values = true;
-    
-    if (fi.num_entries() != 0) {
-        for (unsigned i = 0; actuals_are_values && i < fi.get_arity(); i++) {
-            actuals_are_values = fi.m().is_value(args[i]);
-        }
-    }
 
-    func_entry * entry = fi.get_entry(args);
-    if (entry != 0) {
-        result = entry->get_result();
+bool proto_model::is_select_of_model_value(expr* e) const {
+    return
+        is_app_of(e, m_afid, OP_SELECT) &&
+        is_as_array(to_app(e)->get_arg(0)) &&
+        has_interpretation(array_util(m_manager).get_as_array_func_decl(to_app(to_app(e)->get_arg(0))));
+}
+
+bool proto_model::eval(expr * e, expr_ref & result, bool model_completion) {
+    m_eval.set_model_completion(model_completion);
+    try {
+        m_eval(e, result);
+#if 0
+        std::cout << mk_pp(e, m_manager) << "\n===>\n" << result << "\n";
+#endif
         return true;
     }
-    
-    TRACE("func_interp", tout << "failed to find entry for: "; 
-          for(unsigned i = 0; i < fi.get_arity(); i++) 
-             tout << mk_pp(args[i], fi.m()) << " "; 
-          tout << "\nis partial: " << fi.is_partial() << "\n";);
-    
-    if (!fi.eval_else(args, result)) {
+    catch (model_evaluator_exception & ex) {
+        (void)ex;
+        TRACE("model_evaluator", tout << ex.msg() << "\n";);
         return false;
     }
-    
-    if (actuals_are_values && fi.args_are_values()) {
-        // cheap case... we are done
-        return true;
-    }
-
-    // build symbolic result... the actuals may be equal to the args of one of the entries.
-    basic_simplifier_plugin * bs = static_cast<basic_simplifier_plugin*>(s.get_plugin(fi.m().get_basic_family_id()));
-    for (unsigned k = 0; k < fi.num_entries(); k++) {
-        func_entry const * curr = fi.get_entry(k);
-        SASSERT(!curr->eq_args(fi.m(), fi.get_arity(), args));
-        if (!actuals_are_values || !curr->args_are_values()) {
-            expr_ref_buffer eqs(fi.m());
-            unsigned i = fi.get_arity();
-            while (i > 0) {
-                --i;
-                expr_ref new_eq(fi.m());
-                bs->mk_eq(curr->get_arg(i), args[i], new_eq);
-                eqs.push_back(new_eq);
-            }
-            SASSERT(eqs.size() == fi.get_arity());
-            expr_ref new_cond(fi.m());
-            bs->mk_and(eqs.size(), eqs.c_ptr(), new_cond);
-            bs->mk_ite(new_cond, curr->get_result(), result, result);
-        }
-    }
-    return true;
 }
+
+
+
 
 /**
    \brief Evaluate the expression e in the current model, and store the result in \c result.
    It returns \c true if succeeded, and false otherwise. If the evaluation fails,
    then r contains a term that is simplified as much as possible using the interpretations
    available in the model.
-   
+
    When model_completion == true, if the model does not assign an interpretation to a
    declaration it will build one for it. Moreover, partial functions will also be completed.
    So, if model_completion == true, the evaluator never fails if it doesn't contain quantifiers.
 */
-bool proto_model::eval(expr * e, expr_ref & result, bool model_completion) {
-    bool is_ok = true;
-    SASSERT(is_well_sorted(m_manager, e));
-    TRACE("model_eval", tout << mk_pp(e, m_manager) << "\n";
-          tout << "sort: " << mk_pp(m_manager.get_sort(e), m_manager) << "\n";);
-    
-    obj_map<expr, expr*> eval_cache;
-    expr_ref_vector trail(m_manager);
-    sbuffer<std::pair<expr*, expr*>, 128> todo;
-    ptr_buffer<expr> args;
-    expr * null = static_cast<expr*>(0);
-    todo.push_back(std::make_pair(e, null));
 
-    expr * a;
-    expr * expanded_a;
-    while (!todo.empty()) {
-        std::pair<expr *, expr *> & p = todo.back();
-        a          = p.first;
-        expanded_a = p.second;
-        if (expanded_a != 0) {
-            expr * r = 0;
-            eval_cache.find(expanded_a, r);
-            SASSERT(r != 0);
-            todo.pop_back();
-            eval_cache.insert(a, r);
-            TRACE("model_eval", 
-                  tout << "orig:\n" << mk_pp(a, m_manager) << "\n";
-                  tout << "after beta reduction:\n" << mk_pp(expanded_a, m_manager) << "\n";
-                  tout << "new:\n" << mk_pp(r, m_manager) << "\n";);
-        }
-        else {
-            switch(a->get_kind()) {
-            case AST_APP: {
-                app * t = to_app(a);
-                bool visited = true;
-                args.reset();
-                unsigned num_args = t->get_num_args();
-                for (unsigned i = 0; i < num_args; ++i) {
-                    expr * arg = 0;
-                    if (!eval_cache.find(t->get_arg(i), arg)) {
-                        visited = false;
-                        todo.push_back(std::make_pair(t->get_arg(i), null));
-                    }
-                    else {
-                        args.push_back(arg);
-                    }
-                }
-                if (!visited) {
-                    continue;
-                }
-                SASSERT(args.size() == t->get_num_args());
-                expr_ref new_t(m_manager);
-                func_decl * f   = t->get_decl();
-                
-                if (!has_interpretation(f)) {
-                    // the model does not assign an interpretation to f.
-                    SASSERT(new_t.get() == 0);
-                    if (f->get_family_id() == null_family_id) {
-                        if (model_completion) {
-                            // create an interpretation for f.
-                            new_t = mk_some_interp_for(f);
-                        }
-                        else {
-                            TRACE("model_eval", tout << f->get_name() << " is uninterpreted\n";);
-                            is_ok = false;
-                        }
-                    }
-                    if (new_t.get() == 0) {
-                        // t is interpreted or model completion is disabled.
-                        m_simplifier.mk_app(f, num_args, args.c_ptr(), new_t);
-                        trail.push_back(new_t);
-                        if (!is_app(new_t) || to_app(new_t)->get_decl() != f) {
-                            // if the result is not of the form (f ...), then assume we must simplify it.
-                            expr * new_new_t = 0;
-                            if (!eval_cache.find(new_t.get(), new_new_t)) {
-                                todo.back().second = new_t;
-                                todo.push_back(std::make_pair(new_t, null));
-                                continue;
-                            }
-                            else {
-                                new_t = new_new_t;
-                            }
-                        }
-                    }
-                }
-                else {
-                    // the model has an interpretaion for f.
-                    if (num_args == 0) {
-                        // t is a constant
-                        new_t = get_const_interp(f);
-                    }
-                    else {
-                        // t is a function application
-                        SASSERT(new_t.get() == 0);
-                        // try to use function graph first
-                        func_interp * fi = get_func_interp(f);
-                        SASSERT(fi->get_arity() == num_args);
-                        expr_ref r1(m_manager);
-                        // fi may be partial...
-                        if (!::eval(*fi, m_simplifier, args.c_ptr(), r1)) {
-                            SASSERT(fi->is_partial()); // fi->eval only fails when fi is partial.
-                            if (model_completion) {
-                                expr * r = get_some_value(f->get_range()); 
-                                fi->set_else(r);
-                                SASSERT(!fi->is_partial());
-                                new_t = r;
-                            }
-                            else {
-                                // f is an uninterpreted function, there is no need to use m_simplifier.mk_app
-                                new_t = m_manager.mk_app(f, num_args, args.c_ptr());
-                                trail.push_back(new_t);
-                                TRACE("model_eval", tout << f->get_name() << " is uninterpreted\n";);
-                                is_ok = false;
-                            }
-                        }
-                        else {
-                            SASSERT(r1);
-                            trail.push_back(r1);
-                            expr * r2 = 0;
-                            if (!eval_cache.find(r1.get(), r2)) {
-                                todo.back().second = r1;
-                                todo.push_back(std::make_pair(r1, null));
-                                continue;
-                            }
-                            else {
-                                new_t = r2;
-                            }
-                        }
-                    }
-                }
-                TRACE("model_eval", 
-                      tout << "orig:\n" << mk_pp(t, m_manager) << "\n";
-                      tout << "new:\n" << mk_pp(new_t, m_manager) << "\n";);
-                todo.pop_back();
-                SASSERT(new_t.get() != 0);
-                eval_cache.insert(t, new_t);
-                break;
-            }
-            case AST_VAR:  
-                SASSERT(a != 0);
-                eval_cache.insert(a, a);
-                todo.pop_back();
-                break;
-            case AST_QUANTIFIER: 
-                TRACE("model_eval", tout << "found quantifier\n" << mk_pp(a, m_manager) << "\n";);
-                is_ok = false; // evaluator does not handle quantifiers.
-                SASSERT(a != 0);
-                eval_cache.insert(a, a);
-                todo.pop_back();
-                break;
-            default:
-                UNREACHABLE();
-                break;
-            }
-        }
-    }
-
-    if (!eval_cache.find(e, a)) {
-        TRACE("model_eval", tout << "FAILED e: " << mk_bounded_pp(e, m_manager) << "\n";);
-        UNREACHABLE();
-    }
-
-    result = a;
-    TRACE("model_eval", 
-          ast_ll_pp(tout << "original:  ", m_manager, e);
-          ast_ll_pp(tout << "evaluated: ", m_manager, a);
-          ast_ll_pp(tout << "reduced:   ", m_manager, result.get());
-          tout << "sort: " << mk_pp(m_manager.get_sort(e), m_manager) << "\n";
-          ); 
-    SASSERT(is_well_sorted(m_manager, result.get()));
-    return is_ok;
-}
 
 /**
    \brief Replace uninterpreted constants occurring in fi->get_else()
@@ -410,7 +175,7 @@ void proto_model::cleanup_func_interp(func_interp * fi, func_decl_set & found_au
                 if (m_aux_decls.contains(f))
                     found_aux_fs.insert(f);
                 expr_ref new_t(m_manager);
-                m_simplifier.mk_app(f, num_args, args.c_ptr(), new_t);
+                new_t = m_rewrite.mk_app(f, num_args, args.c_ptr());
                 if (t != new_t.get())
                     trail.push_back(new_t);
                 todo.pop_back();
@@ -429,7 +194,7 @@ void proto_model::cleanup_func_interp(func_interp * fi, func_decl_set & found_au
     if (!cache.find(fi_else, a)) {
         UNREACHABLE();
     }
-    
+
     fi->set_else(a);
 }
 
@@ -460,12 +225,12 @@ void proto_model::cleanup() {
         func_interp * fi = (*it).m_value;
         cleanup_func_interp(fi, found_aux_fs);
     }
-    
+
     // remove auxiliary declarations that are not used.
     if (found_aux_fs.size() != m_aux_decls.size()) {
         remove_aux_decls_not_in_set(m_decls, found_aux_fs);
         remove_aux_decls_not_in_set(m_func_decls, found_aux_fs);
-        
+
         func_decl_set::iterator it2  = m_aux_decls.begin();
         func_decl_set::iterator end2 = m_aux_decls.end();
         for (; it2 != end2; ++it2) {
@@ -476,6 +241,7 @@ void proto_model::cleanup() {
                 m_finterp.find(faux, fi);
                 SASSERT(fi != 0);
                 m_finterp.erase(faux);
+                m_manager.dec_ref(faux);
                 dealloc(fi);
             }
         }
@@ -496,7 +262,6 @@ void proto_model::freeze_universe(sort * s) {
    \brief Return the known universe of an uninterpreted sort.
 */
 obj_hashtable<expr> const & proto_model::get_known_universe(sort * s) const {
-    SASSERT(m_manager.is_uninterp(s));
     return m_user_sort_factory->get_known_universe(s);
 }
 
@@ -511,13 +276,13 @@ ptr_vector<expr> const & proto_model::get_universe(sort * s) const {
     return tmp;
 }
 
-unsigned proto_model::get_num_uninterpreted_sorts() const { 
-    return m_user_sort_factory->get_num_sorts(); 
+unsigned proto_model::get_num_uninterpreted_sorts() const {
+    return m_user_sort_factory->get_num_sorts();
 }
 
-sort * proto_model::get_uninterpreted_sort(unsigned idx) const { 
-    SASSERT(idx < get_num_uninterpreted_sorts()); 
-    return m_user_sort_factory->get_sort(idx); 
+sort * proto_model::get_uninterpreted_sort(unsigned idx) const {
+    SASSERT(idx < get_num_uninterpreted_sorts());
+    return m_user_sort_factory->get_sort(idx);
 }
 
 /**
@@ -535,7 +300,7 @@ expr * proto_model::get_some_value(sort * s) {
     else {
         family_id fid = s->get_family_id();
         value_factory * f = get_factory(fid);
-        if (f) 
+        if (f)
             return f->get_some_value(s);
         // there is no factory for the family id, then assume s is uninterpreted.
         return m_user_sort_factory->get_some_value(s);
@@ -549,7 +314,7 @@ bool proto_model::get_some_values(sort * s, expr_ref & v1, expr_ref & v2) {
     else {
         family_id fid = s->get_family_id();
         value_factory * f = get_factory(fid);
-        if (f) 
+        if (f)
             return f->get_some_values(s, v1, v2);
         else
             return false;
@@ -561,9 +326,9 @@ expr * proto_model::get_fresh_value(sort * s) {
         return m_user_sort_factory->get_fresh_value(s);
     }
     else {
-        family_id fid = s->get_family_id();    
+        family_id fid = s->get_family_id();
         value_factory * f = get_factory(fid);
-        if (f) 
+        if (f)
             return f->get_fresh_value(s);
         else
             // Use user_sort_factory if the theory has no support for model construnction.
@@ -585,7 +350,7 @@ void proto_model::register_value(expr * n) {
     }
 }
 
-bool proto_model::is_array_value(expr * v) const {
+bool proto_model::is_as_array(expr * v) const {
     return is_app_of(v, m_afid, OP_AS_ARRAY);
 }
 
@@ -608,7 +373,7 @@ void proto_model::complete_partial_func(func_decl * f) {
     func_interp * fi = get_func_interp(f);
     if (fi && fi->is_partial()) {
         expr * else_value = 0;
-#if 0 
+#if 0
         // For UFBV benchmarks, setting the "else" to false is not a good idea.
         // TODO: find a permanent solution. A possibility is to add another option.
         if (m_manager.is_bool(f->get_range())) {
@@ -629,7 +394,7 @@ void proto_model::complete_partial_func(func_decl * f) {
 }
 
 /**
-   \brief Set the (else) field of function interpretations... 
+   \brief Set the (else) field of function interpretations...
 */
 void proto_model::complete_partial_funcs() {
     if (m_model_partial)
@@ -656,22 +421,260 @@ model * proto_model::mk_model() {
     decl2finterp::iterator end2 = m_finterp.end();
     for (; it2 != end2; ++it2) {
         m->register_decl(it2->m_key, it2->m_value);
+        m_manager.dec_ref(it2->m_key);
     }
+
     m_finterp.reset(); // m took the ownership of the func_interp's
 
     unsigned sz = get_num_uninterpreted_sorts();
     for (unsigned i = 0; i < sz; i++) {
         sort * s = get_uninterpreted_sort(i);
         TRACE("proto_model", tout << "copying uninterpreted sorts...\n" << mk_pp(s, m_manager) << "\n";);
-        ptr_buffer<expr> buf;
-        obj_hashtable<expr> const & u = get_known_universe(s);
-        obj_hashtable<expr>::iterator it  = u.begin();
-        obj_hashtable<expr>::iterator end = u.end();
-        for (; it != end; ++it) {
-            buf.push_back(*it);
-        }
+        ptr_vector<expr> const& buf = get_universe(s);
         m->register_usort(s, buf.size(), buf.c_ptr());
     }
 
     return m;
 }
+
+
+#if 0
+
+#include"simplifier.h"
+#include"basic_simplifier_plugin.h"
+
+// Auxiliary function for computing fi(args[0], ..., args[fi.get_arity() - 1]).
+// The result is stored in result.
+// Return true if succeeded, and false otherwise.
+// It uses the simplifier s during the computation.
+bool eval(func_interp & fi, simplifier & s, expr * const * args, expr_ref & result) {
+    bool actuals_are_values = true;
+
+    if (fi.num_entries() != 0) {
+        for (unsigned i = 0; actuals_are_values && i < fi.get_arity(); i++) {
+            actuals_are_values = fi.m().is_value(args[i]);
+        }
+    }
+
+    func_entry * entry = fi.get_entry(args);
+    if (entry != 0) {
+        result = entry->get_result();
+        return true;
+    }
+
+    TRACE("func_interp", tout << "failed to find entry for: ";
+          for(unsigned i = 0; i < fi.get_arity(); i++)
+             tout << mk_pp(args[i], fi.m()) << " ";
+          tout << "\nis partial: " << fi.is_partial() << "\n";);
+
+    if (!fi.eval_else(args, result)) {
+        return false;
+    }
+
+    if (actuals_are_values && fi.args_are_values()) {
+        // cheap case... we are done
+        return true;
+    }
+
+    // build symbolic result... the actuals may be equal to the args of one of the entries.
+    basic_simplifier_plugin * bs = static_cast<basic_simplifier_plugin*>(s.get_plugin(fi.m().get_basic_family_id()));
+    for (unsigned k = 0; k < fi.num_entries(); k++) {
+        func_entry const * curr = fi.get_entry(k);
+        SASSERT(!curr->eq_args(fi.m(), fi.get_arity(), args));
+        if (!actuals_are_values || !curr->args_are_values()) {
+            expr_ref_buffer eqs(fi.m());
+            unsigned i = fi.get_arity();
+            while (i > 0) {
+                --i;
+                expr_ref new_eq(fi.m());
+                bs->mk_eq(curr->get_arg(i), args[i], new_eq);
+                eqs.push_back(new_eq);
+            }
+            SASSERT(eqs.size() == fi.get_arity());
+            expr_ref new_cond(fi.m());
+            bs->mk_and(eqs.size(), eqs.c_ptr(), new_cond);
+            bs->mk_ite(new_cond, curr->get_result(), result, result);
+        }
+    }
+    return true;
+}
+
+
+bool proto_model::eval(expr * e, expr_ref & result, bool model_completion) {
+    bool is_ok = true;
+    SASSERT(is_well_sorted(m_manager, e));
+    TRACE("model_eval", tout << mk_pp(e, m_manager) << "\n";
+          tout << "sort: " << mk_pp(m_manager.get_sort(e), m_manager) << "\n";);
+
+    obj_map<expr, expr*> eval_cache;
+    expr_ref_vector trail(m_manager);
+    sbuffer<std::pair<expr*, expr*>, 128> todo;
+    ptr_buffer<expr> args;
+    expr * null = static_cast<expr*>(0);
+    todo.push_back(std::make_pair(e, null));
+
+    simplifier m_simplifier(m_manager);
+
+    expr * a;
+    expr * expanded_a;
+    while (!todo.empty()) {
+        std::pair<expr *, expr *> & p = todo.back();
+        a          = p.first;
+        expanded_a = p.second;
+        if (expanded_a != 0) {
+            expr * r = 0;
+            eval_cache.find(expanded_a, r);
+            SASSERT(r != 0);
+            todo.pop_back();
+            eval_cache.insert(a, r);
+            TRACE("model_eval",
+                  tout << "orig:\n" << mk_pp(a, m_manager) << "\n";
+                  tout << "after beta reduction:\n" << mk_pp(expanded_a, m_manager) << "\n";
+                  tout << "new:\n" << mk_pp(r, m_manager) << "\n";);
+        }
+        else {
+            switch(a->get_kind()) {
+            case AST_APP: {
+                app * t = to_app(a);
+                bool visited = true;
+                args.reset();
+                unsigned num_args = t->get_num_args();
+                for (unsigned i = 0; i < num_args; ++i) {
+                    expr * arg = 0;
+                    if (!eval_cache.find(t->get_arg(i), arg)) {
+                        visited = false;
+                        todo.push_back(std::make_pair(t->get_arg(i), null));
+                    }
+                    else {
+                        args.push_back(arg);
+                    }
+                }
+                if (!visited) {
+                    continue;
+                }
+                SASSERT(args.size() == t->get_num_args());
+                expr_ref new_t(m_manager);
+                func_decl * f   = t->get_decl();
+
+                if (!has_interpretation(f)) {
+                    // the model does not assign an interpretation to f.
+                    SASSERT(new_t.get() == 0);
+                    if (f->get_family_id() == null_family_id) {
+                        if (model_completion) {
+                            // create an interpretation for f.
+                            new_t = mk_some_interp_for(f);
+                        }
+                        else {
+                            TRACE("model_eval", tout << f->get_name() << " is uninterpreted\n";);
+                            is_ok = false;
+                        }
+                    }
+                    if (new_t.get() == 0) {
+                        // t is interpreted or model completion is disabled.
+                        m_simplifier.mk_app(f, num_args, args.c_ptr(), new_t);
+                        TRACE("model_eval", tout << mk_pp(t, m_manager) << " -> " << new_t << "\n";);
+                        trail.push_back(new_t);
+                        if (!is_app(new_t) || to_app(new_t)->get_decl() != f || is_select_of_model_value(new_t)) {
+                            // if the result is not of the form (f ...), then assume we must simplify it.
+                            expr * new_new_t = 0;
+                            if (!eval_cache.find(new_t.get(), new_new_t)) {
+                                todo.back().second = new_t;
+                                todo.push_back(std::make_pair(new_t, null));
+                                continue;
+                            }
+                            else {
+                                new_t = new_new_t;
+                            }
+                        }
+                    }
+                }
+                else {
+                    // the model has an interpretaion for f.
+                    if (num_args == 0) {
+                        // t is a constant
+                        new_t = get_const_interp(f);
+                    }
+                    else {
+                        // t is a function application
+                        SASSERT(new_t.get() == 0);
+                        // try to use function graph first
+                        func_interp * fi = get_func_interp(f);
+                        SASSERT(fi->get_arity() == num_args);
+                        expr_ref r1(m_manager);
+                        // fi may be partial...
+                        if (!::eval(*fi, m_simplifier, args.c_ptr(), r1)) {
+                            SASSERT(fi->is_partial()); // fi->eval only fails when fi is partial.
+                            if (model_completion) {
+                                expr * r = get_some_value(f->get_range());
+                                fi->set_else(r);
+                                SASSERT(!fi->is_partial());
+                                new_t = r;
+                            }
+                            else {
+                                // f is an uninterpreted function, there is no need to use m_simplifier.mk_app
+                                new_t = m_manager.mk_app(f, num_args, args.c_ptr());
+                                trail.push_back(new_t);
+                                TRACE("model_eval", tout << f->get_name() << " is uninterpreted\n";);
+                                is_ok = false;
+                            }
+                        }
+                        else {
+                            SASSERT(r1);
+                            trail.push_back(r1);
+                            TRACE("model_eval", tout << mk_pp(a, m_manager) << "\nevaluates to: " << r1 << "\n";);
+                            expr * r2 = 0;
+                            if (!eval_cache.find(r1.get(), r2)) {
+                                todo.back().second = r1;
+                                todo.push_back(std::make_pair(r1, null));
+                                continue;
+                            }
+                            else {
+                                new_t = r2;
+                            }
+                        }
+                    }
+                }
+                TRACE("model_eval",
+                      tout << "orig:\n" << mk_pp(t, m_manager) << "\n";
+                      tout << "new:\n" << mk_pp(new_t, m_manager) << "\n";);
+                todo.pop_back();
+                SASSERT(new_t.get() != 0);
+                eval_cache.insert(t, new_t);
+                break;
+            }
+            case AST_VAR:
+                SASSERT(a != 0);
+                eval_cache.insert(a, a);
+                todo.pop_back();
+                break;
+            case AST_QUANTIFIER:
+                TRACE("model_eval", tout << "found quantifier\n" << mk_pp(a, m_manager) << "\n";);
+                is_ok = false; // evaluator does not handle quantifiers.
+                SASSERT(a != 0);
+                eval_cache.insert(a, a);
+                todo.pop_back();
+                break;
+            default:
+                UNREACHABLE();
+                break;
+            }
+        }
+    }
+
+    if (!eval_cache.find(e, a)) {
+        TRACE("model_eval", tout << "FAILED e: " << mk_bounded_pp(e, m_manager) << "\n";);
+        UNREACHABLE();
+    }
+
+    result = a;
+    std::cout << mk_pp(e, m_manager) << "\n===>\n" << result << "\n";
+    TRACE("model_eval",
+          ast_ll_pp(tout << "original:  ", m_manager, e);
+          ast_ll_pp(tout << "evaluated: ", m_manager, a);
+          ast_ll_pp(tout << "reduced:   ", m_manager, result.get());
+          tout << "sort: " << mk_pp(m_manager.get_sort(e), m_manager) << "\n";
+          );
+    SASSERT(is_well_sorted(m_manager, result.get()));
+    return is_ok;
+}
+#endif

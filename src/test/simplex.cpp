@@ -11,6 +11,7 @@ Copyright (c) 2015 Microsoft Corporation
 #include "mpq_inf.h"
 #include "vector.h"
 #include "rational.h"
+#include "rlimit.h"
 
 #define R rational
 typedef simplex::simplex<simplex::mpz_ext> Simplex;
@@ -24,35 +25,35 @@ static vector<R> vec(int i, int j) {
     return nv;
 }
 
-static vector<R> vec(int i, int j, int k) {
-    vector<R> nv = vec(i, j);
-    nv.push_back(R(k));
-    return nv;
-}
+// static vector<R> vec(int i, int j, int k) {
+//     vector<R> nv = vec(i, j);
+//     nv.push_back(R(k));
+//     return nv;
+// }
 
-static vector<R> vec(int i, int j, int k, int l) {
-    vector<R> nv = vec(i, j, k);
-    nv.push_back(R(l));
-    return nv;
-}
+// static vector<R> vec(int i, int j, int k, int l) {
+//     vector<R> nv = vec(i, j, k);
+//     nv.push_back(R(l));
+//     return nv;
+// }
 
-static vector<R> vec(int i, int j, int k, int l, int x) {
-    vector<R> nv = vec(i, j, k, l);
-    nv.push_back(R(x));
-    return nv;
-}
+/// static vector<R> vec(int i, int j, int k, int l, int x) {
+///     vector<R> nv = vec(i, j, k, l);
+///     nv.push_back(R(x));
+///     return nv;
+/// }
 
-static vector<R> vec(int i, int j, int k, int l, int x, int y) {
-    vector<R> nv = vec(i, j, k, l, x);
-    nv.push_back(R(y));
-    return nv;
-}
+// static vector<R> vec(int i, int j, int k, int l, int x, int y) {
+//     vector<R> nv = vec(i, j, k, l, x);
+//     nv.push_back(R(y));
+//     return nv;
+// }
 
-static vector<R> vec(int i, int j, int k, int l, int x, int y, int z) {
-    vector<R> nv = vec(i, j, k, l, x, y);
-    nv.push_back(R(z));
-    return nv;
-}
+// static vector<R> vec(int i, int j, int k, int l, int x, int y, int z) {
+//     vector<R> nv = vec(i, j, k, l, x, y);
+//     nv.push_back(R(z));
+//     return nv;
+// }
 
 
 
@@ -99,7 +100,8 @@ static void feas(Simplex& S) {
 }
 
 static void test1() {
-    Simplex S;
+    reslimit rl;
+    Simplex S(rl);
     add_row(S, vec(1,0), R(1));
     add_row(S, vec(0,1), R(1));
     add_row(S, vec(1,1), R(1));
@@ -107,7 +109,7 @@ static void test1() {
 }
 
 static void test2() {
-    Simplex S;
+    reslimit rl; Simplex S(rl);
     add_row(S, vec(1, 0), R(1));
     add_row(S, vec(0, 1), R(1));
     add_row(S, vec(1, 1), R(1), true);
@@ -115,7 +117,7 @@ static void test2() {
 }
 
 static void test3() {
-    Simplex S;
+    reslimit rl; Simplex S(rl);
     add_row(S, vec(-1, 0), R(-1));
     add_row(S, vec(0, -1), R(-1));
     add_row(S, vec(1, 1), R(1), true);
@@ -123,7 +125,7 @@ static void test3() {
 }
 
 static void test4() {
-    Simplex S;
+    reslimit rl; Simplex S(rl);
     add_row(S, vec(1, 0), R(1));
     add_row(S, vec(0, -1), R(-1));
     add_row(S, vec(1, 1), R(1), true);
@@ -131,7 +133,7 @@ static void test4() {
 }
 
 void tst_simplex() {
-    Simplex S;
+    reslimit rl; Simplex S(rl);
 
     std::cout << "simplex\n";
 
@@ -148,11 +150,11 @@ void tst_simplex() {
         coeffs.push_back(mpz(i+1));
     }
 
-    Simplex::row r = S.add_row(1, coeffs.size(), vars.c_ptr(), coeffs.c_ptr());
+    // Simplex::row r = S.add_row(1, coeffs.size(), vars.c_ptr(), coeffs.c_ptr());
     is_sat = S.make_feasible();
     std::cout << "feasible: " << is_sat << "\n";
     S.display(std::cout);
-    _scoped_numeral<unsynch_mpq_inf_manager> num(em); 
+    _scoped_numeral<unsynch_mpq_inf_manager> num(em);
     num = std::make_pair(mpq(1), mpq(0));
     S.set_lower(0, num);
     S.set_upper(0, num);

@@ -30,12 +30,14 @@ public:
     bit_blaster_rewriter(ast_manager & m, params_ref const & p);
     ~bit_blaster_rewriter();
     void updt_params(params_ref const & p);
-    void set_cancel(bool f);
     ast_manager & m() const;
     unsigned get_num_steps() const;
     void cleanup();
     obj_map<func_decl, expr*> const& const2bits() const; 
     void operator()(expr * e, expr_ref & result, proof_ref & result_proof);
+    void push();
+    void pop(unsigned num_scopes);
+    unsigned get_num_scopes() const;
 };
 
 #endif

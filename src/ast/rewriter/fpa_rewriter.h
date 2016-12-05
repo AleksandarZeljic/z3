@@ -39,13 +39,13 @@ public:
 
     ast_manager & m() const { return m_util.m(); }
     family_id get_fid() const { return m_util.get_fid(); }
-    
+
     void updt_params(params_ref const & p);
     static void get_param_descrs(param_descrs & r);
 
     br_status mk_app_core(func_decl * f, unsigned num_args, expr * const * args, expr_ref & result);
     br_status mk_eq_core(expr * arg1, expr * arg2, expr_ref & result);
-    
+
     br_status mk_add(expr * arg1, expr * arg2, expr * arg3, expr_ref & result);
     br_status mk_sub(expr * arg1, expr * arg2, expr * arg3, expr_ref & result);
     br_status mk_mul(expr * arg1, expr * arg2, expr * arg3, expr_ref & result);
@@ -77,15 +77,20 @@ public:
 
     br_status mk_to_fp(func_decl * f, unsigned num_args, expr * const * args, expr_ref & result);
     br_status mk_to_fp_unsigned(func_decl * f, expr * arg1, expr * arg2, expr_ref & result);
-    br_status mk_fp(expr * arg1, expr * arg2, expr * arg3, expr_ref & result);
+
+    br_status mk_bv2rm(expr * arg, expr_ref & result);
+    br_status mk_fp(expr * sgn, expr * exp, expr * sig, expr_ref & result);
     br_status mk_to_fp_unsigned(expr * arg1, expr * arg2, expr_ref & result);
     br_status mk_to_ubv(func_decl * f, expr * arg1, expr * arg2, expr_ref & result);
     br_status mk_to_sbv(func_decl * f, expr * arg1, expr * arg2, expr_ref & result);
+    br_status mk_to_ieee_bv(func_decl * f, expr * arg, expr_ref & result);
     br_status mk_to_real(expr * arg, expr_ref & result);
 
-    br_status mk_to_ubv_unspecified(func_decl * f, expr_ref & result);
-    br_status mk_to_sbv_unspecified(func_decl * f, expr_ref & result);
-    br_status mk_to_real_unspecified(expr_ref & result);
+    br_status mk_to_ubv_unspecified(unsigned ebits, unsigned sbits, unsigned with, expr_ref & result);
+    br_status mk_to_sbv_unspecified(unsigned ebits, unsigned sbits, unsigned with, expr_ref & result);
+    br_status mk_to_real_unspecified(unsigned ebits, unsigned sbits, expr_ref & result);
+
+    br_status mk_bvwrap(expr * arg, expr_ref & result);
 };
 
 #endif

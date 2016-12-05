@@ -107,6 +107,9 @@ expr * get_clause_literal(ast_manager & m, expr * cls, unsigned idx);
    Return true                               if num_args == 0
  */
 expr * mk_and(ast_manager & m, unsigned num_args, expr * const * args);
+app  * mk_and(ast_manager & m, unsigned num_args, app * const * args);
+inline app_ref mk_and(app_ref_vector const& args) { return app_ref(mk_and(args.get_manager(), args.size(), args.c_ptr()), args.get_manager()); }
+inline expr_ref mk_and(expr_ref_vector const& args) { return expr_ref(mk_and(args.get_manager(), args.size(), args.c_ptr()), args.get_manager()); }
 
 /**
    Return (or args[0] ... args[num_args-1]) if num_args >= 2
@@ -114,6 +117,9 @@ expr * mk_and(ast_manager & m, unsigned num_args, expr * const * args);
    Return false                             if num_args == 0
  */
 expr * mk_or(ast_manager & m, unsigned num_args, expr * const * args);
+app  * mk_or(ast_manager & m, unsigned num_args, app * const * args);
+inline app_ref mk_or(app_ref_vector const& args) { return app_ref(mk_or(args.get_manager(), args.size(), args.c_ptr()), args.get_manager()); }
+inline expr_ref mk_or(expr_ref_vector const& args) { return expr_ref(mk_or(args.get_manager(), args.size(), args.c_ptr()), args.get_manager()); }
 
 /**
    Return a          if arg = (not a)
@@ -122,9 +128,21 @@ expr * mk_or(ast_manager & m, unsigned num_args, expr * const * args);
 expr * mk_not(ast_manager & m, expr * arg);
 
 /**
+   Negate and push over conjunction or disjunction.
+ */
+expr_ref push_not(const expr_ref& arg);
+
+/**
    Return the expression (and (not (= args[0] args[1])) (not (= args[0] args[2])) ... (not (= args[num_args-2] args[num_args-1])))
 */
 expr * expand_distinct(ast_manager & m, unsigned num_args, expr * const * args);
+
+/**
+   Create simplified distinct term. Binary distinct becomes a single disequality.
+ */
+expr * mk_distinct(ast_manager& m, unsigned num_args, expr * const * args);
+
+expr_ref mk_distinct(expr_ref_vector const& args);
 
 /**
    \brief Collect top-level conjunctions and disjunctions.
